@@ -1,0 +1,7 @@
+*.env
+node_modules/
+.DS_Store
+**/.DS_Store
+box sync folder
+BadFiles.txt
+GoodFiles.txt
