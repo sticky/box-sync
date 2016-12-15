@@ -13,6 +13,35 @@ var ISSUE_TOO_LONG = 'long';
 var ISSUE_UNPRINTABLE = 'chars';
 var ISSUE_SPACES = 'spaces';
 
+// Making sure errors in code don't cause us to categorize a directory more than once.
+var checkedInoNumbers = [];
+
+var NameHas = {
+  badLength: function (filename) {
+    if (filename.length > 255) {
+      return false;
+    }
+  },
+  badChars: function (filename) {
+    return /[^ -~]|[\/\\]/g.test(filename);
+  },
+  badWhitespace: function(filename) {
+    return /^[\s]|[\s]$/g.test(filename);
+  },
+  ignored: function(name) {
+    // Very specific names...
+    switch (name) {
+      case '.Trash':
+      case '.DS_Store':
+      case '.cache':
+        return true;
+        break;
+    }
+
+    return false;
+  }
+};
+
 var stats = {
   bytes: 0,
   validCounts: INIT_VALID_COUNTS,
@@ -29,8 +58,6 @@ function registerBadFile(filename, path, inodeNum, issues, callback) {
     callback(badFile);
   }
 }
-
-var checkedInoNumbers = [];
 
 function registerDir(type, dirname, path, dirId, parentId, issues, callback) {
   if (checkedInoNumbers.indexOf(dirId) >= 0) {
@@ -96,33 +123,6 @@ function recordIssue(issue) {
   }
 }
 
-function isTooLong(filename) {
-  if (filename.length > 255) {
-    return false;
-  }
-}
-
-function isInvalidChars(filename) {
-  return /[^ -~]|[\/\\]/g.test(filename);
-}
-
-function badWhitespace(filename) {
-  return /^[\s]|[\s]$/g.test(filename);
-}
-
-function ignorableName(name) {
-  // Very specific names...
-  switch (name) {
-    case '.Trash':
-    case '.DS_Store':
-    case '.cache':
-      return true;
-      break;
-  }
-
-  return false;
-}
-
 function processDirectoryEntry(fileName, dirId, parentId, dirPathStr, options) {
   var invalid = false;
   var problems = [];
@@ -130,7 +130,7 @@ function processDirectoryEntry(fileName, dirId, parentId, dirPathStr, options) {
   var stat = fs.lstatSync(fullPath);
   var currentId = stat.ino;
 
-  if (stat.isSymbolicLink() || ignorableName(fileName)) {
+  if (stat.isSymbolicLink() || NameHas.ignored(fileName)) {
     if (options.onIgnoredFile) {
       stats.badCounts.ignores += 1;
       options.onIgnoredFile(dirPathStr, fileName);
@@ -150,15 +150,15 @@ function processDirectoryEntry(fileName, dirId, parentId, dirPathStr, options) {
   }
   stats.bytes += stat.size;
 
-  if (isTooLong(fileName)) {
+  if (NameHas.badLength(fileName)) {
     invalid = true;
     problems.push(ISSUE_TOO_LONG);
   }
-  if (isInvalidChars(fileName)) {
+  if (NameHas.badChars(fileName)) {
     invalid = true;
     problems.push(ISSUE_UNPRINTABLE);
   }
-  if (badWhitespace(fileName)) {
+  if (NameHas.badWhitespace(fileName)) {
     invalid = true;
     problems.push(ISSUE_SPACES);
   }
@@ -223,3 +223,4 @@ FilenameValidator.categorizeDirectoryContents = function (path, parentId, option
     processDirectoryEntry(fileName, dirId, parentId, path, options);
   });
 };
+
