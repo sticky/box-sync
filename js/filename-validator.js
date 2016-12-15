@@ -31,23 +31,42 @@ function registerBadFile(filename, path, inodeNum, issues, callback) {
 }
 
 var checkedInoNumbers = [];
-function registerBadDir(dirname, path, parentId, inodeNum, issues, callback) {
-  if (checkedInoNumbers.indexOf(inodeNum) >= 0) {
-    throw new Error("registerBadDir()::: Sanity check failure; inodeNum already checked. Num: " + inodeNum + " Path:" + path + "/" + dirname);
+
+function registerDir(type, dirname, path, dirId, parentId, issues, callback) {
+  if (checkedInoNumbers.indexOf(dirId) >= 0) {
+    throw new Error("registerDir(" + type + ")::: Sanity check failure; inodeNum already checked. Num: " + dirId + " Path:" + path + "/" + dirname);
   } else {
-    checkedInoNumbers.push(inodeNum);
+    checkedInoNumbers.push(dirId);
   }
 
-  var badDir = new StickyDir({parent: parentId, inode: inodeNum, problems:issues, name: dirname, path: path});
-  recordIssues(issues);
-  bad.dirs.push(badDir);
+  var dir = new StickyDir({parent: parentId, inode: dirId, problems:issues, name: dirname, path: path});
+  var list;
+  switch(type) {
+    case 'bad':
+      recordIssues(issues);
+      list = bad.dirs;
+      break;
+    case 'good':
+      stats.validCounts.dirs += 1;
+      list = valid.dirs;
+      break;
+    default:
+      throw new Error("registerDir()::: Bad type: " + type);
+  }
+
+  list.push(dir);
+
   if (callback) {
-    callback(badDir);
+    callback(dir);
   }
 }
 
-function registerGoodFile(filename, path, inodeNum, issues, callback) {
-  var file = new StickyFile({localFolderId: inodeNum, problems:issues, name: filename, path: path});
+function registerBadDir(dirname, path, dirId, parentId, issues, callback) {
+  registerDir('bad', dirname, path, dirId, parentId, issues, callback);
+}
+
+function registerGoodFile(filename, path, folderId, issues, callback) {
+  var file = new StickyFile({localFolderId: folderId, problems:issues, name: filename, path: path});
   stats.validCounts.files += 1;
   valid.files.push(file);
   if (callback) {
@@ -55,20 +74,8 @@ function registerGoodFile(filename, path, inodeNum, issues, callback) {
   }
 }
 
-function registerGoodDir(dirname, path, parentId, inodeNum, issues, callback) {
-  if (checkedInoNumbers.indexOf(inodeNum) >= 0) {
-    throw new Error("registerGoodDir()::: Sanity check failure; inodeNum already checked. Num: " + inodeNum + " Path:" + path + "/" + dirname);
-  } else {
-    checkedInoNumbers.push(inodeNum);
-  }
-
-  var dir = new StickyDir({parent: parentId, inode: inodeNum, problems:issues, name: dirname, path: path});
-  stats.validCounts.dirs += 1;
-  valid.dirs.push(dir);
-
-  if (callback) {
-    callback(dir);
-  }
+function registerGoodDir(dirname, path, dirId, parentId, issues, callback) {
+  registerDir('good', dirname, path, dirId, parentId, issues, callback);
 }
 
 function recordIssues(issues) {
@@ -116,6 +123,64 @@ function ignorableName(name) {
   return false;
 }
 
+function processDirectoryEntry(fileName, dirId, parentId, dirPathStr, options) {
+  var invalid = false;
+  var problems = [];
+  var fullPath = dirPathStr + '/' + fileName;
+  var stat = fs.lstatSync(fullPath);
+  var currentId = stat.ino;
+
+  if (stat.isSymbolicLink() || ignorableName(fileName)) {
+    if (options.onIgnoredFile) {
+      stats.badCounts.ignores += 1;
+      options.onIgnoredFile(dirPathStr, fileName);
+    }
+    return;
+  }
+
+  var checkedPaths = [];
+  if (checkedPaths.indexOf(fullPath) >= 0) {
+    throw new Error("Sanity check: path already checked! " + fullPath);
+  } else {
+    checkedPaths.push(fullPath);
+  }
+
+  if (stat.isDirectory()) {
+    FilenameValidator.categorizeDirectoryContents(fullPath, currentId, options);
+  }
+  stats.bytes += stat.size;
+
+  if (isTooLong(fileName)) {
+    invalid = true;
+    problems.push(ISSUE_TOO_LONG);
+  }
+  if (isInvalidChars(fileName)) {
+    invalid = true;
+    problems.push(ISSUE_UNPRINTABLE);
+  }
+  if (badWhitespace(fileName)) {
+    invalid = true;
+    problems.push(ISSUE_SPACES);
+  }
+
+  if (invalid) {
+    if (stat.isFile()) {
+      registerBadFile(fileName, dirPathStr, dirId, problems, options.onBadFile);
+    } else if (stat.isDirectory()) {
+      registerBadDir(fileName, dirPathStr, currentId, parentId, problems, options.onBadDir);
+    }
+    return;
+  }
+
+  if (stat.isFile()) {
+    valid.files.push({path: dirPathStr, file: fileName});
+    registerGoodFile(fileName, dirPathStr, dirId, problems, options.onValidFile);
+  } else if(stat.isDirectory()) {
+    valid.dirs.push({path: dirPathStr, file: fileName});
+    registerGoodDir(fileName, dirPathStr, currentId, parentId, problems, options.onValidDir);
+  }
+}
+
 FilenameValidator.init = function() {
   valid = INIT_FILES;
   bad = INIT_BADS;
@@ -139,14 +204,13 @@ var usedInoNumes = [];
 
 FilenameValidator.categorizeDirectoryContents = function (path, parentId, options, shouldInit) {
   var fileNames = fs.readdirSync(path);
-  var thisDirIno = fs.lstatSync(path).ino;
-  if (usedInoNumes.indexOf(thisDirIno) >= 0) {
-    throw new Error("wtf?  info taken already:" + thisDirIno + " for " + path);
+  var dirId = fs.lstatSync(path).ino;
+  if (usedInoNumes.indexOf(dirId) >= 0) {
+    throw new Error("wtf?  info taken already:" + dirId + " for " + path);
   } else {
-    usedInoNumes.push(thisDirIno);
+    usedInoNumes.push(dirId);
   }
   var parentId = parentId ? parentId : 'noparent';
-  var self = this;
   if (shouldInit === true) {
     this.init();
   }
@@ -155,61 +219,7 @@ FilenameValidator.categorizeDirectoryContents = function (path, parentId, option
     options.onDirectoryStart(path);
   }
 
-  fileNames.forEach(function(file) {
-    var invalid = false;
-    var problems = [];
-    var fullPath = path + '/' + file;
-    var stat = fs.lstatSync(fullPath);
-    var currentIno = stat.ino;
-
-    if (stat.isSymbolicLink() || ignorableName(file)) {
-      if (options.onIgnoredFile) {
-        stats.badCounts.ignores += 1;
-        options.onIgnoredFile(path, file);
-      }
-      return;
-    }
-
-    var checkedPaths = [];
-    if (checkedPaths.indexOf(fullPath) >= 0) {
-      throw new Error("Sanity check: path already checked! " + fullPath);
-    } else {
-      checkedPaths.push(fullPath);
-    }
-
-    if (stat.isDirectory()) {
-      self.categorizeDirectoryContents(fullPath, thisDirIno, options);
-    }
-    stats.bytes += stat.size;
-
-    if (isTooLong(file)) {
-      invalid = true;
-      problems.push(ISSUE_TOO_LONG);
-    }
-    if (isInvalidChars(file)) {
-      invalid = true;
-      problems.push(ISSUE_UNPRINTABLE);
-    }
-    if (badWhitespace(file)) {
-      invalid = true;
-      problems.push(ISSUE_SPACES);
-    }
-
-    if (invalid) {
-      if (stat.isFile()) {
-        registerBadFile(file, path, thisDirIno, problems, options.onBadFile);
-      } else if (stat.isDirectory()) {
-        registerBadDir(file, path, parentId, thisDirIno, problems, options.onBadDir);
-      }
-      return;
-    }
-
-    if (stat.isFile()) {
-      valid.files.push({path: path, file: file});
-      registerGoodFile(file, path, currentIno, problems, options.onValidFile);
-    } else if(stat.isDirectory()) {
-      valid.dirs.push({path: path, file: file});
-      registerGoodDir(file, path, thisDirIno, currentIno, problems, options.onValidDir);
-    }
+  fileNames.forEach(function(fileName) {
+    processDirectoryEntry(fileName, dirId, parentId, path, options);
   });
 };
