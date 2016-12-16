@@ -4,17 +4,28 @@ var fs = require('fs');
 var program = require('commander');
 var ProgressBar = require('progress');
 var BoxSDK = require('box-node-sdk');
-var clientID = require('./tokens.env').clientID;
-var developerToken = require('./tokens.env').developerToken;
-var clientSecret = require('./tokens.env').clientSecret;
+var clientID = require('./files/tokens.env').clientID;
+var developerToken = require('./files/tokens.env').developerToken;
+var clientSecret = require('./files/tokens.env').clientSecret;
 var StickyFileInfo = require('./js/file-info');
 var StickyDirInfo = require('./js/dir-info');
+var FileState = require('./js/file-state');
 
 var validator = require('./js/filename-validator');
+
+var FILENAMES = {
+  badFiles: 'files/BadFiles.txt',
+  badDirs: 'files/BadDirs.txt',
+  validFiles: 'files/GoodFiles.txt',
+  validDirs: 'files/GoodDirs.txt',
+  processedFiles: 'files/ProcessedFiles.txt',
+  ignoredFiles: 'files/Ignored.txt',
+};
 
 var outputStream = process.stdout;
 var lastStrRendered = '';
 var callbacks = {};
+var fileState;
 callbacks.onDirectoryStarted = function (path) {
   var progressStr = formatPathProgress(path, outputStream);
   if (lastStrRendered !== progressStr) {
@@ -26,22 +37,42 @@ callbacks.onDirectoryStarted = function (path) {
 }
 
 callbacks.onBadDirectory = function (dirInfo) {
-  fs.appendFileSync(fds.badDirs, badDirToString(dirInfo));
+  try {
+    fs.appendFileSync(fds.badDirs, badDirToString(dirInfo));
+  } catch(err) {
+    console.error("Failed to append to bad dir file.  File descriptor: %s errorcode: %", fds.badDirs, err.code);
+  }
 }
 
 callbacks.onBadFile = function (fileInfo) {
-  fs.appendFileSync(fds.badFiles, badFileToString(fileInfo));
+  try {
+    fs.appendFileSync(fds.badFiles, badFileToString(fileInfo));
+  } catch(err) {
+    console.error("Failed to append to bad file.  File descriptor: %s errorcode: %", fds.badFiles, err.code);
+  }
 }
 callbacks.onValidDir = function (fileInfo) {
-  fs.appendFileSync(fds.validDirs, validFileToString(fileInfo));
+  try {
+    fs.appendFileSync(fds.validDirs, validFileToString(fileInfo));
+  } catch(err) {
+    console.error("Failed to append to valid dir file.  File descriptor: %s errorcode: %", fds.validDirs, err.code);
+  }
 }
 
 callbacks.onValidFile = function (fileInfo) {
-  fs.appendFileSync(fds.validFiles, validDirToString(fileInfo));
+  try {
+    fs.appendFileSync(fds.validFiles, validDirToString(fileInfo));
+  } catch(err) {
+    console.error("Failed to append to valid file list.  File descriptor: %s errorcode: %s", fds.validFiles, err.code);
+  }
 }
 
 callbacks.onIgnoredFile = function(path, file) {
-  fs.appendFileSync(fds.ignoredFiles, path + '/' + file + '\n');
+  try {
+    fs.appendFileSync(fds.ignoredFiles, path + '/' + file + '\n');
+  } catch(err) {
+
+  }
 }
 
 var sdk = new BoxSDK({
@@ -69,17 +100,24 @@ var overallBar = new ProgressBar('  progress [:bar] :rate/bps :percent :etas', {
 program
   .version('0.0.1')
   .arguments('<local-dir> <box-folder>')
-  .option('-v, --validate', 'Only do the initial validation and categorization of the files.')
+  .option('-v, --only-validate', 'Only do the initial validation and categorization of the files.')
+  .option('-n, --assume-new', 'Completely ignore results from previous runs.')
   //.option('-d, --directories', 'Only process directories.(unimplmeneted) '),
   //.option('-f, --files', 'Only process files (unimplmeneted)')
   .action(function(source, dest) {
+    var freshStart = program.assumeNew ? true : false;
+    // A simplisitc check; do any of our files already have content?
+    var key;
+    var emptyFiles = false;
+    for(key in FILENAMES) {
+      if (freshStart) {break;}
+      if (FILENAMES.hasOwnProperty(key)) {
+        // All files must be empty.
+        emptyFiles = emptyFiles && !hasContent(FILENAMES[key]);
+      }
+    }
 
-    fds.badFiles = fs.openSync('BadFiles.txt', 'w');
-    fds.badDirs = fs.openSync('BadDirs.txt', 'w');
-    fds.validFiles = fs.openSync('GoodFiles.txt', 'w');
-    fds.validDirs = fs.openSync('GoodDirs.txt', 'w');
-    fds.processedFiles = fs.openSync('ProcessedFiles.txt', 'w');
-    fds.ignoredFiles = fs.openSync('Ignored.txt', 'w');
+    initializeFds(freshStart);
 
     var options = {
       onBadFile: callbacks.onBadFile,
@@ -89,10 +127,14 @@ program
       onValidFile: callbacks.onValidFile,
       onIgnoredFile: callbacks.onIgnoredFile
     };
-    validator.categorizeDirectoryContents(source, null, options, true);
 
-    if (!program.validate) {
+    if (freshStart) {
+      validator.categorizeDirectoryContents(source, null, options, true);
+    } else {
+      loadPreviousState();
+    }
 
+    if (!program.onlyValidate) {
       createDirectoryTree(validator.getDirs());
       uploadFiles(validator.getFiles());
     }
@@ -115,6 +157,68 @@ program
     }
   })
   .parse(process.argv);
+
+function hasContent (filename) {
+  var stats;
+  var contentPresent = false;
+
+  try {
+    stats = fs.statSync(__dirname + '/' + filename);
+    contentPresent = stats["size"] > 0;
+  } catch (err) {
+    // Probably doesn't exist.
+  }
+
+  return contentPresent;
+}
+
+function initializeFds(fresh) {
+  if (fresh === true) {
+    console.log("opening with new");
+    fds.badFiles = fs.openSync(__dirname + '/' + FILENAMES.badFiles, 'w');
+    fds.badDirs = fs.openSync(__dirname + '/' + FILENAMES.badDirs, 'w');
+    fds.validFiles = fs.openSync(__dirname + '/' + FILENAMES.validFiles, 'w');
+    fds.validDirs = fs.openSync(__dirname + '/' + FILENAMES.validDirs, 'w');
+    fds.processedFiles = fs.openSync(__dirname + '/' + FILENAMES.processedFiles, 'w');
+    fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'w');
+  } else {
+    console.log("opening with old");
+    fds.badFiles = fs.openSync(__dirname + '/' + FILENAMES.badFiles, 'r');
+    fds.badDirs = fs.openSync(__dirname + '/' + FILENAMES.badDirs, 'w+');
+    fds.validFiles = fs.openSync(__dirname + '/' + FILENAMES.validFiles, 'r');
+    fds.validDirs = fs.openSync(__dirname + '/' + FILENAMES.validDirs, 'w+');
+    fds.processedFiles = fs.openSync(__dirname + '/' + FILENAMES.processedFiles, 'w+');
+    fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'r');
+  }
+}
+
+function loadPreviousState() {
+  var filesProcessing = 0;
+  fileState = new FileState();
+
+  // It'd be kinda cool if we could use file descriptors but for some reason it wasn't working...
+
+  filesProcessing += 1;
+  fileState.loadFromBadFile(__dirname + '/' + FILENAMES.badFiles, function() {
+    filesProcessing -= 1;
+    console.log("Done with bads files.");
+    if (filesProcessing <= 0) {
+      onDoneLoadingFiles(fileState);
+    }
+  });
+  filesProcessing += 1;
+  fileState.loadFromBadDirs(__dirname + '/' + FILENAMES.badDirs, function() {
+    filesProcessing -= 1;
+    console.log("Done with bads dirs.");
+    if (filesProcessing <= 0) {
+      onDoneLoadingFiles(fileState);
+    }
+  });
+}
+
+function onDoneLoadingFiles(fileState) {
+  console.log("done!!!", fileState.getCounts());
+}
 
 function badDirToString(badDir) {
   var dirStr = badDir.str();
@@ -184,6 +288,14 @@ function uploadFiles(uploadFileList) {
   console.error("uploadFiles:: This needs to be updated.");
   return;
   uploadFileList.forEach(uploadFile);
+}
+
+function makeFoldersOnBox(folders) {
+
+}
+
+function makeFolderOnBox(folder) {
+  console.log("folder", folder);
 }
 
 function uploadFile(fileInfo) {

@@ -1,17 +1,18 @@
 var fs = require('fs');
+var FileState = require('./file-state');
 var StickyFile = require('./file-info');
 var StickyDir = require('./dir-info');
 
 var FilenameValidator = exports;
 
-var INIT_FILES = {files: [], dirs: []};
-var INIT_BADS = {files: [], dirs: [], ignores: []};
 var INIT_VALID_COUNTS = {dirs: 0, files: 0};
 var INIT_BAD_COUNTS = {long: 0, unprintable: 0, spaces: 0, unknown: 0, ignores: 0};
 
 var ISSUE_TOO_LONG = 'long';
 var ISSUE_UNPRINTABLE = 'chars';
 var ISSUE_SPACES = 'spaces';
+
+var fileState;
 
 // Making sure errors in code don't cause us to categorize a directory more than once.
 var checkedInoNumbers = [];
@@ -47,13 +48,11 @@ var stats = {
   validCounts: INIT_VALID_COUNTS,
   badCounts: INIT_BAD_COUNTS
 };
-var valid = INIT_FILES;
-var bad = INIT_BADS;
 
 function registerBadFile(filename, path, inodeNum, issues, callback) {
   var badFile = new StickyFile({localFolderId: inodeNum, problems:issues, name: filename, path: path});
   recordIssues(issues);
-  bad.files.push(badFile);
+  fileState.bad.files.push(badFile);
   if (callback) {
     callback(badFile);
   }
@@ -71,11 +70,11 @@ function registerDir(type, dirname, path, dirId, parentId, issues, callback) {
   switch(type) {
     case 'bad':
       recordIssues(issues);
-      list = bad.dirs;
+      list = fileState.bad.dirs;
       break;
     case 'good':
       stats.validCounts.dirs += 1;
-      list = valid.dirs;
+      list = fileState.valid.dirs;
       break;
     default:
       throw new Error("registerDir()::: Bad type: " + type);
@@ -95,7 +94,7 @@ function registerBadDir(dirname, path, dirId, parentId, issues, callback) {
 function registerGoodFile(filename, path, folderId, issues, callback) {
   var file = new StickyFile({localFolderId: folderId, problems:issues, name: filename, path: path});
   stats.validCounts.files += 1;
-  valid.files.push(file);
+  fileState.valid.files.push(file);
   if (callback) {
     callback(file);
   }
@@ -173,17 +172,16 @@ function processDirectoryEntry(fileName, dirId, parentId, dirPathStr, options) {
   }
 
   if (stat.isFile()) {
-    valid.files.push({path: dirPathStr, file: fileName});
+    fileState.valid.files.push({path: dirPathStr, file: fileName});
     registerGoodFile(fileName, dirPathStr, dirId, problems, options.onValidFile);
   } else if(stat.isDirectory()) {
-    valid.dirs.push({path: dirPathStr, file: fileName});
+    fileState.valid.dirs.push({path: dirPathStr, file: fileName});
     registerGoodDir(fileName, dirPathStr, currentId, parentId, problems, options.onValidDir);
   }
 }
 
 FilenameValidator.init = function() {
-  valid = INIT_FILES;
-  bad = INIT_BADS;
+  fileState = new FileState();
   stats.bytes = 0;
   stats.validCounts = INIT_VALID_COUNTS;
   stats.badCounts = INIT_BAD_COUNTS;
@@ -194,10 +192,10 @@ FilenameValidator.getStats = function() {
 };
 
 FilenameValidator.getFiles = function() {
-  return valid;
+  return fileState.valid;
 };
 FilenameValidator.getBadFiles = function() {
-  return bad;
+  return fileState.bad;
 };
 
 var usedInoNumes = [];
