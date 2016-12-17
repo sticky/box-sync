@@ -5,6 +5,7 @@ function FileInfo (opts) {
   this.pathStr = opts.path;
   this.name = opts.name;
   this.issues = opts.problems;
+  this.line = opts.line;
 };
 
 module.exports = FileInfo;

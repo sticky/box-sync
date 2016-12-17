@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "description": "Sync a local folder with a Box.com folder.  Upload files that are missing, or that seem incomplete.",
   "main": "index.js",
-  "engines" : { "node" : ">=5.0.0" },
+  "engines": {
+    "node": ">=5.0.0"
+  },
   "bin": {
     "box-sync": "./index.js"
   },
@@ -16,7 +18,8 @@
     "box-node-sdk": "^1.1.0",
     "commander": "^2.9.0",
     "fs": "0.0.1-security",
-    "progress": "^1.1.8"
+    "progress": "^1.1.8",
+    "sqlite3": "^3.1.8"
   },
   "devDependencies": {
     "nodemon": "^1.11.0"

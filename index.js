@@ -9,9 +9,12 @@ var developerToken = require('./files/tokens.env').developerToken;
 var clientSecret = require('./files/tokens.env').clientSecret;
 var StickyFileInfo = require('./js/file-info');
 var StickyDirInfo = require('./js/dir-info');
-var FileState = require('./js/file-state');
+var FileState = require('./js/disk-state');
+
+var Db = require('./js/files-db');
 
 var validator = require('./js/filename-validator');
+
 
 var FILENAMES = {
   badFiles: 'files/BadFiles.txt',
@@ -25,7 +28,7 @@ var FILENAMES = {
 var outputStream = process.stdout;
 var lastStrRendered = '';
 var callbacks = {};
-var fileState;
+var fileState = new FileState();
 callbacks.onDirectoryStarted = function (path) {
   var progressStr = formatPathProgress(path, outputStream);
   if (lastStrRendered !== progressStr) {
@@ -37,11 +40,7 @@ callbacks.onDirectoryStarted = function (path) {
 }
 
 callbacks.onBadDirectory = function (dirInfo) {
-  try {
-    fs.appendFileSync(fds.badDirs, badDirToString(dirInfo));
-  } catch(err) {
-    console.error("Failed to append to bad dir file.  File descriptor: %s errorcode: %", fds.badDirs, err.code);
-  }
+  fileState.storeDir('bad', dirInfo);
 }
 
 callbacks.onBadFile = function (fileInfo) {
@@ -51,12 +50,8 @@ callbacks.onBadFile = function (fileInfo) {
     console.error("Failed to append to bad file.  File descriptor: %s errorcode: %", fds.badFiles, err.code);
   }
 }
-callbacks.onValidDir = function (fileInfo) {
-  try {
-    fs.appendFileSync(fds.validDirs, validFileToString(fileInfo));
-  } catch(err) {
-    console.error("Failed to append to valid dir file.  File descriptor: %s errorcode: %", fds.validDirs, err.code);
-  }
+callbacks.onValidDir = function (dirInfo) {
+  fileState.storeDir('valid', dirInfo);
 }
 
 callbacks.onValidFile = function (fileInfo) {
@@ -131,7 +126,7 @@ program
     if (freshStart) {
       validator.categorizeDirectoryContents(source, null, options, true);
     } else {
-      loadPreviousState();
+      loadPreviousState(onDoneLoadingFiles);
     }
 
     if (!program.onlyValidate) {
@@ -184,40 +179,56 @@ function initializeFds(fresh) {
   } else {
     console.log("opening with old");
     fds.badFiles = fs.openSync(__dirname + '/' + FILENAMES.badFiles, 'r');
-    fds.badDirs = fs.openSync(__dirname + '/' + FILENAMES.badDirs, 'w+');
+    fds.badDirs = fs.openSync(__dirname + '/' + FILENAMES.badDirs, 'a');
     fds.validFiles = fs.openSync(__dirname + '/' + FILENAMES.validFiles, 'r');
-    fds.validDirs = fs.openSync(__dirname + '/' + FILENAMES.validDirs, 'w+');
-    fds.processedFiles = fs.openSync(__dirname + '/' + FILENAMES.processedFiles, 'w+');
+    fds.validDirs = fs.openSync(__dirname + '/' + FILENAMES.validDirs, 'a');
+    fds.processedFiles = fs.openSync(__dirname + '/' + FILENAMES.processedFiles, 'a');
     fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'r');
   }
 }
 
-function loadPreviousState() {
+function loadPreviousState(doneCallback) {
   var filesProcessing = 0;
-  fileState = new FileState();
 
   // It'd be kinda cool if we could use file descriptors but for some reason it wasn't working...
 
   filesProcessing += 1;
-  fileState.loadFromBadFile(__dirname + '/' + FILENAMES.badFiles, function() {
+  fileState.loadFilesFromDisk("bad", __dirname + '/' + FILENAMES.badFiles, function() {
     filesProcessing -= 1;
     console.log("Done with bads files.");
-    if (filesProcessing <= 0) {
-      onDoneLoadingFiles(fileState);
+    if (filesProcessing <= 0 && doneCallback) {
+      doneCallback(fileState);
     }
   });
   filesProcessing += 1;
-  fileState.loadFromBadDirs(__dirname + '/' + FILENAMES.badDirs, function() {
+  fileState.loadDirsFromDisk("bad", __dirname + '/' + FILENAMES.badDirs, function() {
     filesProcessing -= 1;
     console.log("Done with bads dirs.");
-    if (filesProcessing <= 0) {
-      onDoneLoadingFiles(fileState);
+    if (filesProcessing <= 0 && doneCallback) {
+      doneCallback(fileState);
+    }
+  });
+  filesProcessing += 1;
+  fileState.loadDirsFromDisk("good", __dirname + '/' + FILENAMES.validDirs, function() {
+    filesProcessing -= 1;
+    console.log("Done with good dirs.");
+    if (filesProcessing <= 0 && doneCallback) {
+      doneCallback(fileState);
+    }
+  });
+  filesProcessing += 1;
+  fileState.loadFilesFromDisk("good", __dirname + '/' + FILENAMES.validFiles, function() {
+    filesProcessing -= 1;
+    console.log("Done with good files.");
+    if (filesProcessing <= 0 && doneCallback) {
+      doneCallback(fileState);
     }
   });
 }
 
 function onDoneLoadingFiles(fileState) {
   console.log("done!!!", fileState.getCounts());
+  makeFoldersOnBox(fileState.valid.dirs);
 }
 
 function badDirToString(badDir) {
@@ -291,11 +302,11 @@ function uploadFiles(uploadFileList) {
 }
 
 function makeFoldersOnBox(folders) {
-
+  //console.log("folders", folders);
 }
 
 function makeFolderOnBox(folder) {
-  console.log("folder", folder);
+  //console.log("folder", folder);
 }
 
 function uploadFile(fileInfo) {

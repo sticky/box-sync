@@ -1,5 +1,5 @@
 var fs = require('fs');
-var FileState = require('./file-state');
+var FileState = require('./disk-state');
 var StickyFile = require('./file-info');
 var StickyDir = require('./dir-info');
 
