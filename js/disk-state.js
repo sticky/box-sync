@@ -4,7 +4,7 @@ var fs = require('fs');
 var readline = require('readline');
 var StickyFile = require('./file-info');
 var StickyDir = require('./dir-info');
-var FileDb = require('./file-db');
+var FileDb = require('./files-db');
 
 var INIT_VALID_FILES = {files: [], dirs: []};
 var INIT_BADS = {files: [], dirs: [], ignores: []};
@@ -26,10 +26,16 @@ DiskState.prototype.getCounts = function() {
   return stats;
 };
 
+DiskState.clear = function(callback) {
+  FileDb.startOver(callback);
+};
 
 DiskState.prototype.storeDir = function(classification, dirInfo) {
-  FileDb.store(dirInfo.);
-  console.log("my dir info!!!,", dirInfo);
+  FileDb.store('dir', classification, dirInfo);
+};
+
+DiskState.prototype.storeFile = function(classification, fileInfo) {
+  FileDb.store('file', classification, fileInfo);
 };
 
 

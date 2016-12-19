@@ -17,10 +17,6 @@ var validator = require('./js/filename-validator');
 
 
 var FILENAMES = {
-  badFiles: 'files/BadFiles.txt',
-  badDirs: 'files/BadDirs.txt',
-  validFiles: 'files/GoodFiles.txt',
-  validDirs: 'files/GoodDirs.txt',
   processedFiles: 'files/ProcessedFiles.txt',
   ignoredFiles: 'files/Ignored.txt',
 };
@@ -44,22 +40,14 @@ callbacks.onBadDirectory = function (dirInfo) {
 }
 
 callbacks.onBadFile = function (fileInfo) {
-  try {
-    fs.appendFileSync(fds.badFiles, badFileToString(fileInfo));
-  } catch(err) {
-    console.error("Failed to append to bad file.  File descriptor: %s errorcode: %", fds.badFiles, err.code);
-  }
+  fileState.storeFile('bad', fileInfo);
 }
 callbacks.onValidDir = function (dirInfo) {
   fileState.storeDir('valid', dirInfo);
 }
 
 callbacks.onValidFile = function (fileInfo) {
-  try {
-    fs.appendFileSync(fds.validFiles, validDirToString(fileInfo));
-  } catch(err) {
-    console.error("Failed to append to valid file list.  File descriptor: %s errorcode: %s", fds.validFiles, err.code);
-  }
+  fileState.storeFile('valid', fileInfo);
 }
 
 callbacks.onIgnoredFile = function(path, file) {
@@ -112,46 +100,48 @@ program
       }
     }
 
-    initializeFds(freshStart);
-
-    var options = {
-      onBadFile: callbacks.onBadFile,
-      onBadDir: callbacks.onBadDirectory,
-      onDirectoryStart: callbacks.onDirectoryStarted,
-      onValidDir: callbacks.onValidDir,
-      onValidFile: callbacks.onValidFile,
-      onIgnoredFile: callbacks.onIgnoredFile
-    };
-
-    if (freshStart) {
-      validator.categorizeDirectoryContents(source, null, options, true);
-    } else {
-      loadPreviousState(onDoneLoadingFiles);
-    }
-
-    if (!program.onlyValidate) {
-      createDirectoryTree(validator.getDirs());
-      uploadFiles(validator.getFiles());
-    }
-
-    outputStream.write('\n');
-    var stats = validator.getStats();
-    console.log("# valid", stats.validCounts.files);
-    console.log("# valid dirs", stats.validCounts.dirs);
-    console.log("# bad file lengths", stats.badCounts.long);
-    console.log("# bad file chars", stats.badCounts.unprintable);
-    console.log("# bad whitespace", stats.badCounts.spaces);
-    console.log("# bytes", stats.bytes);
-
-    for (var fdType in fds) {
-      if (fds.hasOwnProperty(fdType)) {
-        if (fds[fdType]) {
-          fs.closeSync(fds[fdType]);
-        }
-      }
-    }
+    initializeFds(freshStart, onFdInitalized.bind(this, source, freshStart));
   })
   .parse(process.argv);
+
+function onFdInitalized(source, freshStart) {
+  var options = {
+    onBadFile: callbacks.onBadFile,
+    onBadDir: callbacks.onBadDirectory,
+    onDirectoryStart: callbacks.onDirectoryStarted,
+    onValidDir: callbacks.onValidDir,
+    onValidFile: callbacks.onValidFile,
+    onIgnoredFile: callbacks.onIgnoredFile
+  };
+
+  if (freshStart) {
+    validator.categorizeDirectoryContents(source, null, options, true);
+  } else {
+    loadPreviousState(onDoneLoadingFiles);
+  }
+
+  if (!program.onlyValidate) {
+    createDirectoryTree(validator.getDirs());
+    uploadFiles(validator.getFiles());
+  }
+
+  outputStream.write('\n');
+  var stats = validator.getStats();
+  console.log("# valid", stats.validCounts.files);
+  console.log("# valid dirs", stats.validCounts.dirs);
+  console.log("# bad file lengths", stats.badCounts.long);
+  console.log("# bad file chars", stats.badCounts.unprintable);
+  console.log("# bad whitespace", stats.badCounts.spaces);
+  console.log("# bytes", stats.bytes);
+
+  for (var fdType in fds) {
+    if (fds.hasOwnProperty(fdType)) {
+      if (fds[fdType]) {
+        fs.closeSync(fds[fdType]);
+      }
+    }
+  }
+}
 
 function hasContent (filename) {
   var stats;
@@ -167,21 +157,14 @@ function hasContent (filename) {
   return contentPresent;
 }
 
-function initializeFds(fresh) {
+function initializeFds(fresh, callback) {
   if (fresh === true) {
-    console.log("opening with new");
-    fds.badFiles = fs.openSync(__dirname + '/' + FILENAMES.badFiles, 'w');
-    fds.badDirs = fs.openSync(__dirname + '/' + FILENAMES.badDirs, 'w');
-    fds.validFiles = fs.openSync(__dirname + '/' + FILENAMES.validFiles, 'w');
-    fds.validDirs = fs.openSync(__dirname + '/' + FILENAMES.validDirs, 'w');
+    console.log("treating as fresh start (purging existing state)");
+    FileState.clear(callback);
     fds.processedFiles = fs.openSync(__dirname + '/' + FILENAMES.processedFiles, 'w');
     fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'w');
   } else {
     console.log("opening with old");
-    fds.badFiles = fs.openSync(__dirname + '/' + FILENAMES.badFiles, 'r');
-    fds.badDirs = fs.openSync(__dirname + '/' + FILENAMES.badDirs, 'a');
-    fds.validFiles = fs.openSync(__dirname + '/' + FILENAMES.validFiles, 'r');
-    fds.validDirs = fs.openSync(__dirname + '/' + FILENAMES.validDirs, 'a');
     fds.processedFiles = fs.openSync(__dirname + '/' + FILENAMES.processedFiles, 'a');
     fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'r');
   }
