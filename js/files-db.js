@@ -32,16 +32,18 @@ function truncateEverything(callback) {
     TABLE_DIRS,
     TABLE_FILES,
   ];
-  var totalTruncs = tables.length;
   setForeignKeysPragma();
-  tables.forEach(function(tableName) {
-    db.run(stmt + tableName + ';', [], function(err) {
-      if (err) {
-        throw new Error("Failed to truncate everything:" + err);
-      }
-      totalTruncs -= 1;
-      if (totalTruncs <= 0) {
-        console.log("Done truncating");
+
+  db.serialize(function() {
+    tables.forEach(function(tableName) {
+      db.run(stmt + tableName + ';', [], function(err) {
+        if (err) {
+          throw new Error("Failed to truncate everything:" + err);
+        }
+      });
+    });
+    db.run('VACUUUM', [], function() {
+      if (callback) {
         callback();
       }
     });
@@ -65,10 +67,6 @@ function storeDirectory(id, parentId, remoteId, fullPath, name) {
     if (err) {
       throw new Error("Db.store error: " + err);
     }
-
-    /*console.log("lastId", this.lastID);
-    console.log("changes", this.changes); */
-
   });
 }
 
@@ -87,10 +85,58 @@ function storeFile(localFolderId, fullPath, name) {
     if (err) {
       throw new Error("Db.store error: " + err);
     }
+  });
+}
 
-    /*console.log("lastId", this.lastID);
-     console.log("changes", this.changes); */
+function loadDirs(classification, onFinish) {
+  /*SELECT * FROM Directories d INNER JOIN Directory_Class dc
+   ON d.Sys_Id_Num = dc.Dir_Id
+   INNER JOIN Directory_Issues di
+   ON d.Sys_Id_Num = di.DirId
+   WHERE dc.Class = 2 */
 
+
+
+  var stmt = 'SELECT * FROM ' + TABLE_DIRS + ' d INNER JOIN ' + TABLE_DIR_CLASS + ' dc ';
+  stmt += 'ON d.Sys_Id_Num = dc.Dir_Id ';
+  stmt += 'INNER JOIN ' + TABLE_DIR_ISSUES + ' di ';
+  stmt += 'ON d.Sys_Id_Num = di.DirId';
+
+  if (classification) {
+    stmt += ' WHERE dc.Class = ' + CLASS_ENUM[classification];
+  }
+  db.all(stmt, [], function(err, rows) {
+    if (err) {
+      throw new Error("Db.loadDirs error: " + err);
+    }
+    if (onFinish) {
+      onFinish.call(this, rows);
+    }
+  });
+}
+
+/*SELECT * FROM Files f INNER JOIN File_Class fc
+ ON f.Folder_Id = fc.Folder_Id AND f.Name = fc.File_Name
+ INNER JOIN File_Issues fi
+ ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name
+ WHERE fc.Class = 1 */
+function loadFiles(classification, onFinish) {
+  var stmt = 'SELECT * FROM ' + TABLE_FILES + ' f INNER JOIN ' + TABLE_FILE_CLASS + ' fc ';
+  stmt += 'ON f.Folder_Id = fc.Folder_Id AND f.Name = fc.File_Name ';
+  stmt += 'INNER JOIN ' + TABLE_FILE_ISSUES + ' fi ';
+  stmt += 'ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name';
+
+  if (classification) {
+    stmt += ' WHERE fc.Class = ' + CLASS_ENUM[classification];
+  }
+  db.all(stmt, [], function(err, rows) {
+    if (err) {
+      throw new Error("Db.loadFiles error: " + err);
+    }
+
+    if (onFinish) {
+      onFinish.call(this, rows);
+    }
   });
 }
 
@@ -108,10 +154,24 @@ function storeDirIssues(idNum, issueArr) {
     if (err) {
       throw new Error("Db.store issues error: " + err);
     }
+  });
+}
 
-    /*console.log("lastId", this.lastID);
-    console.log("changes", this.changes); */
+function storeFileIssues(folderId, name, issuesArray) {
+  var mainTable = TABLE_FILE_ISSUES;
+  var updateParams = {
+    $folder: folderId,
+    $name: name,
+  };
+  var updateStr = 'INSERT OR REPLACE INTO ';
+  var valuesStr = ' (Folder_Id, File_Name, Long, Chars, Spaces) VALUES ($folder, $name, $long, $chars, $spaces);';
+  setIssueParams(updateParams, issuesArray);
+  setForeignKeysPragma();
 
+  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+    if (err) {
+      throw new Error("Db.store issues error: " + err);
+    }
   });
 }
 
@@ -143,20 +203,26 @@ function storeDirClass(classification, dirId) {
     if (err) {
       throw new Error("Db.store class error: " + err);
     }
-
-    /*console.log("lastId", this.lastID);
-     console.log("changes", this.changes); */
-
   });
 }
 
-/* function FileInfo (opts) {
- this.localFolderId = opts.localFolderId;
- this.pathStr = opts.path;
- this.name = opts.name;
- this.issues = opts.problems;
- this.line = opts.line;
- }; */
+function storeFileClass(classification, folderId, name) {
+  var mainTable = TABLE_FILE_CLASS;
+  var updateParams = {
+    $folder: folderId,
+    $name: name,
+    $class: CLASS_ENUM[classification]
+  };
+  var updateStr = 'INSERT OR REPLACE INTO ';
+  var valuesStr = ' (Folder_Id, File_Name, Class) VALUES ($folder, $name, $class);';
+  setForeignKeysPragma();
+
+  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+    if (err) {
+      throw new Error("Db.store class error: " + err);
+    }
+  });
+}
 
 FilesDb.startOver = function(callback) {
   truncateEverything(callback);
@@ -167,17 +233,37 @@ FilesDb.store = function(type, classification, itemInfo) {
   var mainTable;
   var classTable;
   var updateParams = [];
+  // Ordering of queries is important, so serialize those suckas.
+  db.serialize(function() {
+    switch (type) {
+      case 'dir':
+        storeDirectory(itemInfo.localId, itemInfo.parentId, itemInfo.remoteId, itemInfo.pathStr, itemInfo.name);
+        storeDirIssues(itemInfo.localId, itemInfo.issues);
+        storeDirClass(classification, itemInfo.localId);
+        break;
+      case 'file':
+        storeFile(itemInfo.localFolderId, itemInfo.pathStr, itemInfo.name);
+        storeFileIssues(itemInfo.localFolderId, itemInfo.name, itemInfo.issues);
+        storeFileClass(classification, itemInfo.localFolderId, itemInfo.name);
+        break;
+      default:
+        throw Error("FilesDb.store::: Invalid type.");
+    }
+  });
+};
+
+FilesDb.loadAll = function(type, classification, callback) {
   switch(type) {
-    case 'dir':
-      storeDirectory(itemInfo.localId, itemInfo.parentId, itemInfo.remoteId, itemInfo.pathStr, itemInfo.name);
-      storeDirIssues(itemInfo.localId, itemInfo.issues);
-      storeDirClass(classification, itemInfo.localId);
-      break;
     case 'file':
-      storeFile(itemInfo.localFolderId, itemInfo.pathStr, itemInfo.name);
+      db.serialize(function(){
+        loadFiles(classification, callback);
+      });
       break;
-    default:
-      throw Error("FilesDb.store::: Invalid type.");
+    case 'dir':
+      db.serialize(function(){
+        loadDirs(classification, callback);
+      });
+      break;
   }
 };
 

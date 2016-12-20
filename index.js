@@ -15,6 +15,7 @@ var Db = require('./js/files-db');
 
 var validator = require('./js/filename-validator');
 
+var rootFolderId = -1;
 
 var FILENAMES = {
   processedFiles: 'files/ProcessedFiles.txt',
@@ -58,6 +59,21 @@ callbacks.onIgnoredFile = function(path, file) {
   }
 }
 
+callbacks.onPreFileComplete = function(error, response) {
+  if (error) {
+    console.log("error status code:", error.statusCode);
+    console.log("error message:", error.message);
+  }
+  if (response) {
+    console.log(response);
+  }
+}
+
+callbacks.onDoneLoadingFiles =function(fileState) {
+  console.log("done!!!", fileState.getCounts());
+  makeFoldersOnBox(fileState.valid.dirs);
+};
+
 var sdk = new BoxSDK({
   clientID: clientID,
   clientSecret: clientSecret
@@ -91,7 +107,8 @@ program
     var freshStart = program.assumeNew ? true : false;
     // A simplisitc check; do any of our files already have content?
     var key;
-    var emptyFiles = false;
+    var emptyFiles = true;
+    rootFolderId = dest;
     for(key in FILENAMES) {
       if (freshStart) {break;}
       if (FILENAMES.hasOwnProperty(key)) {
@@ -117,7 +134,7 @@ function onFdInitalized(source, freshStart) {
   if (freshStart) {
     validator.categorizeDirectoryContents(source, null, options, true);
   } else {
-    loadPreviousState(onDoneLoadingFiles);
+    loadPreviousState(callbacks.onDoneLoadingFiles);
   }
 
   if (!program.onlyValidate) {
@@ -167,51 +184,47 @@ function initializeFds(fresh, callback) {
     console.log("opening with old");
     fds.processedFiles = fs.openSync(__dirname + '/' + FILENAMES.processedFiles, 'a');
     fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'r');
+    if (callback) {
+      callback();
+    }
   }
 }
 
 function loadPreviousState(doneCallback) {
   var filesProcessing = 0;
 
-  // It'd be kinda cool if we could use file descriptors but for some reason it wasn't working...
-
   filesProcessing += 1;
-  fileState.loadFilesFromDisk("bad", __dirname + '/' + FILENAMES.badFiles, function() {
+  fileState.loadFiles("bad", function() {
     filesProcessing -= 1;
-    console.log("Done with bads files.");
+    console.log("Done with bads files.", filesProcessing);
     if (filesProcessing <= 0 && doneCallback) {
       doneCallback(fileState);
     }
   });
   filesProcessing += 1;
-  fileState.loadDirsFromDisk("bad", __dirname + '/' + FILENAMES.badDirs, function() {
+  fileState.loadDirs("bad", function() {
     filesProcessing -= 1;
-    console.log("Done with bads dirs.");
+    console.log("Done with bads dirs.", filesProcessing);
     if (filesProcessing <= 0 && doneCallback) {
       doneCallback(fileState);
     }
   });
   filesProcessing += 1;
-  fileState.loadDirsFromDisk("good", __dirname + '/' + FILENAMES.validDirs, function() {
+  fileState.loadDirs("valid", function() {
     filesProcessing -= 1;
-    console.log("Done with good dirs.");
+    console.log("Done with good dirs.", filesProcessing);
     if (filesProcessing <= 0 && doneCallback) {
       doneCallback(fileState);
     }
   });
   filesProcessing += 1;
-  fileState.loadFilesFromDisk("good", __dirname + '/' + FILENAMES.validFiles, function() {
+  fileState.loadFiles("valid", function() {
     filesProcessing -= 1;
-    console.log("Done with good files.");
+    console.log("Done with good files.", filesProcessing);
     if (filesProcessing <= 0 && doneCallback) {
       doneCallback(fileState);
     }
   });
-}
-
-function onDoneLoadingFiles(fileState) {
-  console.log("done!!!", fileState.getCounts());
-  makeFoldersOnBox(fileState.valid.dirs);
 }
 
 function badDirToString(badDir) {
@@ -302,31 +315,14 @@ function uploadFile(fileInfo) {
   var filestat = fs.statSync(fullPath);
   var fileSize = filestat.size;
 
-  var folderId = 14324972774;
+  var folderId = rootFolderId;
   fileBar.total = fileSize;
   fileBar.tick(0);
 
   //client.files.preflightUploadFile('' + folderId, {name: name, size: 10000}, null, onPreFileComplete);
-  client.files.uploadFile('' + folderId, name, stream, onPreFileComplete);
+  client.files.uploadFile('' + folderId, name, stream, callbacks.onPreFileComplete);
 
   stream.on('data', function(chunk) {
     fileBar.tick(chunk.length);
   });
 }
-
-function onPreFileComplete(error, response) {
-  if (error) {
-    console.log("error status code:", error.statusCode);
-    console.log("error message:", error.message);
-    //console.log("error response:", error.response);
-  }
-  if (response) {
-    console.log(response);
-  }
-}
-
-
-
-
-
-
