@@ -1,5 +1,6 @@
 'use strict';
 var sqlite3 = require('sqlite3').verbose();
+var async = require('async');
 var db = new sqlite3.Database('files-db.sqlite', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE);
 
 var TABLE_DIRS = 'Directories';
@@ -50,7 +51,7 @@ function truncateEverything(callback) {
   });
 }
 
-function storeDirectory(id, parentId, remoteId, fullPath, name) {
+function storeDirectory(id, parentId, remoteId, fullPath, name, onDoneCallback) {
   var mainTable = TABLE_DIRS;
   var updateParams = {
     $id: id,
@@ -67,10 +68,13 @@ function storeDirectory(id, parentId, remoteId, fullPath, name) {
     if (err) {
       throw new Error("Db.store error: " + err);
     }
+    if (onDoneCallback) {
+      onDoneCallback();
+    }
   });
 }
 
-function storeFile(localFolderId, fullPath, name) {
+function storeFile(localFolderId, fullPath, name, onDoneCallback) {
   var mainTable = TABLE_FILES;
   var updateParams = {
     $folderId: localFolderId,
@@ -84,6 +88,9 @@ function storeFile(localFolderId, fullPath, name) {
   db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
     if (err) {
       throw new Error("Db.store error: " + err);
+    }
+    if (onDoneCallback) {
+      onDoneCallback();
     }
   });
 }
@@ -140,7 +147,7 @@ function loadFiles(classification, onFinish) {
   });
 }
 
-function storeDirIssues(idNum, issueArr) {
+function storeDirIssues(idNum, issueArr, onDoneCallback) {
   var mainTable = TABLE_DIR_ISSUES;
   var updateParams = {
     $id: idNum
@@ -154,10 +161,13 @@ function storeDirIssues(idNum, issueArr) {
     if (err) {
       throw new Error("Db.store issues error: " + err);
     }
+    if (onDoneCallback) {
+      onDoneCallback();
+    }
   });
 }
 
-function storeFileIssues(folderId, name, issuesArray) {
+function storeFileIssues(folderId, name, issuesArray, onDoneCallback) {
   var mainTable = TABLE_FILE_ISSUES;
   var updateParams = {
     $folder: folderId,
@@ -171,6 +181,9 @@ function storeFileIssues(folderId, name, issuesArray) {
   db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
     if (err) {
       throw new Error("Db.store issues error: " + err);
+    }
+    if (onDoneCallback) {
+      onDoneCallback();
     }
   });
 }
@@ -189,7 +202,7 @@ function setIssueParams(params, issueArr) {
   return params;
 }
 
-function storeDirClass(classification, dirId) {
+function storeDirClass(classification, dirId, onDoneCallback) {
   var mainTable = TABLE_DIR_CLASS;
   var updateParams = {
     $id: dirId,
@@ -203,10 +216,13 @@ function storeDirClass(classification, dirId) {
     if (err) {
       throw new Error("Db.store class error: " + err);
     }
+    if (onDoneCallback) {
+      onDoneCallback();
+    }
   });
 }
 
-function storeFileClass(classification, folderId, name) {
+function storeFileClass(classification, folderId, name, onDoneCallback) {
   var mainTable = TABLE_FILE_CLASS;
   var updateParams = {
     $folder: folderId,
@@ -221,6 +237,9 @@ function storeFileClass(classification, folderId, name) {
     if (err) {
       throw new Error("Db.store class error: " + err);
     }
+    if (onDoneCallback) {
+      onDoneCallback();
+    }
   });
 }
 
@@ -229,38 +248,52 @@ FilesDb.startOver = function(callback) {
 };
 
 //TODO: Figure out a way to make this more like a transaction, since we have multiple statements to complete.
-FilesDb.store = function(type, classification, itemInfo) {
+FilesDb.store = function(type, classification, itemInfo, doneCallback) {
   var mainTable;
   var classTable;
   var updateParams = [];
-  // Ordering of queries is important, so serialize those suckas.
-  db.serialize(function() {
-    switch (type) {
-      case 'dir':
-        storeDirectory(itemInfo.localId, itemInfo.parentId, itemInfo.remoteId, itemInfo.pathStr, itemInfo.name);
-        storeDirIssues(itemInfo.localId, itemInfo.issues);
-        storeDirClass(classification, itemInfo.localId);
-        break;
-      case 'file':
-        storeFile(itemInfo.localFolderId, itemInfo.pathStr, itemInfo.name);
-        storeFileIssues(itemInfo.localFolderId, itemInfo.name, itemInfo.issues);
-        storeFileClass(classification, itemInfo.localFolderId, itemInfo.name);
-        break;
-      default:
-        throw Error("FilesDb.store::: Invalid type.");
-    }
-  });
+  var tasks = 0;
+  switch (type) {
+    case 'dir':
+      async.series([
+        function(callback) {
+          storeDirectory(itemInfo.localId, itemInfo.parentId, itemInfo.remoteId, itemInfo.pathStr, itemInfo.name, callback);
+        },
+        function(callback) {
+          storeDirIssues(itemInfo.localId, itemInfo.issues, callback);
+        },
+        function(callback) {
+          storeDirClass(classification, itemInfo.localId, callback);
+        }
+      ], function() {console.log("DONE DOING THE STORAGE"); doneCallback()});
+      break;
+    case 'file':
+      async.series([
+        function(callback) {
+          storeFile(itemInfo.localFolderId, itemInfo.pathStr, itemInfo.name, callback);
+        },
+        function(callback) {
+          storeFileIssues(itemInfo.localFolderId, itemInfo.name, itemInfo.issues, callback);
+        },
+        function(callback) {
+          storeFileClass(classification, itemInfo.localFolderId, itemInfo.name, callback);
+        }
+      ], function() {console.log("DONE DOING THE STORAGE"); doneCallback()});
+      break;
+    default:
+      throw Error("FilesDb.store::: Invalid type.");
+  }
 };
 
 FilesDb.loadAll = function(type, classification, callback) {
   switch(type) {
     case 'file':
-      db.serialize(function(){
+      db.serialize(function() {
         loadFiles(classification, callback);
       });
       break;
     case 'dir':
-      db.serialize(function(){
+      db.serialize(function() {
         loadDirs(classification, callback);
       });
       break;

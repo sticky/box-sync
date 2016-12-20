@@ -84,12 +84,12 @@ DiskState.clear = function(callback) {
   FileDb.startOver(callback);
 };
 
-DiskState.prototype.storeDir = function(classification, dirInfo) {
-  FileDb.store('dir', classification, dirInfo);
+DiskState.prototype.storeDir = function(classification, dirInfo, doneCallback) {
+  FileDb.store('dir', classification, dirInfo, doneCallback);
 };
 
-DiskState.prototype.storeFile = function(classification, fileInfo) {
-  FileDb.store('file', classification, fileInfo);
+DiskState.prototype.storeFile = function(classification, fileInfo, doneCallback) {
+  FileDb.store('file', classification, fileInfo, doneCallback);
 };
 
 DiskState.prototype.loadDirs = function(classification, completeCallback) {
