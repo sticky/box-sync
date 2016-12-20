@@ -3,6 +3,8 @@
 var fs = require('fs');
 var program = require('commander');
 var ProgressBar = require('progress');
+var async = require("async");
+
 var BoxSDK = require('box-node-sdk');
 var clientID = require('./files/tokens.env').clientID;
 var developerToken = require('./files/tokens.env').developerToken;
@@ -66,6 +68,18 @@ callbacks.onPreFileComplete = function(error, response) {
   }
   if (response) {
     console.log(response);
+  }
+}
+
+callbacks.onFolderComplete = function(folder, error, response) {
+  var remoteId;
+  if (error) {
+    console.log("error status code:", error.statusCode);
+    console.log("error message:", error.message);
+  }
+  if (response) {
+    console.log("response id", response.id);
+    folder.remoteId = response.id;
   }
 }
 
@@ -191,6 +205,7 @@ function initializeFds(fresh, callback) {
 }
 
 function loadPreviousState(doneCallback) {
+  console.log("loading previous");
   var filesProcessing = 0;
 
   filesProcessing += 1;
@@ -298,11 +313,28 @@ function uploadFiles(uploadFileList) {
 }
 
 function makeFoldersOnBox(folders) {
-  //console.log("folders", folders);
+  var foldersToMade
+  // See Disk-state; this list is built using a type of DFS algo,
+  // so the root node is the very last one.
+
+  // We also need to force synchronous behavior here because folders
+  // have parents and we need complete parents on Box.com to get a valid
+  // parent ID number.
+  async.eachSeries(folders.reverse(), makeFolderOnBox);
 }
 
-function makeFolderOnBox(folder) {
-  //console.log("folder", folder);
+function makeFolderOnBox(folder, callback) {
+  console.log("time to make folders!", folder);
+  var parentId;
+  if (!folder.parentId || folder.parentId === 'noparent') {
+    parentId = rootFolderId;
+  } else {
+    parentId = fileState.getRemoteId(folder.parentId);
+  }
+  client.folders.create(parentId, folder.name, function(err, response) {
+    callbacks.onFolderComplete(folder, err, response);
+    fileState.storeDir('valid', folder, callback);
+  });
 }
 
 function uploadFile(fileInfo) {
