@@ -1,3 +1,4 @@
+// TODO: Really need to make this module more async-aware.
 var fs = require('fs');
 var FileState = require('./disk-state');
 var StickyFile = require('./file-info');

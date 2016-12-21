@@ -55,9 +55,18 @@ callbacks.onValidFile = function (fileInfo) {
 callbacks.onIgnoredFile = function(path, file) {
   try {
     fs.appendFileSync(fds.ignoredFiles, path + '/' + file + '\n');
-  } catch(err) {
+  } catch(err) {}
+}
 
-  }
+callbacks.onCategorizeComplete = function() {
+  outputStream.write('\n');
+  var stats = validator.getStats();
+  console.log("# valid", stats.validCounts.files);
+  console.log("# valid dirs", stats.validCounts.dirs);
+  console.log("# bad file lengths", stats.badCounts.long);
+  console.log("# bad file chars", stats.badCounts.unprintable);
+  console.log("# bad whitespace", stats.badCounts.spaces);
+  console.log("# bytes", stats.bytes);
 }
 
 callbacks.onPreFileComplete = function(error, response) {
@@ -65,35 +74,58 @@ callbacks.onPreFileComplete = function(error, response) {
     console.log("error status code:", error.statusCode);
     console.log("error message:", error.message);
   }
-  if (response) {
-    console.log(response);
-  }
 }
 
-callbacks.onFolderComplete = function(folder, error, response) {
+callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
   var remoteId;
-  if (error) {
-    console.log("error status code:", error.statusCode);
-    console.log("error message:", error.message);
-  }
   if (response) {
     console.log("response id", response.id);
-    folder.remoteId = response.id;
+    dir.remoteId = response.id;
   }
+  async.series([
+    function(callback) {
+      if (error) {
+        fileState.storeDirError(dir, error, response, callback);
+      } else {
+        callback();
+      }
+    },
+    function(callback) {
+      fileState.storeDir('valid', dir, callback);
+    }
+  ], completeCallback);
 }
 
 callbacks.onDoneLoadingFromDisk = function(fileState) {
   console.log("done loading!!!", fileState.getCounts());
+
+  if (!program.onlyValidate) {
+    createBoxContent(fileState, function() {
+      console.log("*** create box content fininished!!!!! ****");
+    });
+  }
+
+  closeFiles();
+};
+
+function createBoxContent(fileState, callback) {
   fileState.getIncompleteDirs(function(dirs) {
-    console.log("incompletes", dirs);
     if (dirs === false)  {
-      console.log("No progress recorded.");
       // Fake the root directory as a starting point.
       dirs = [new StickyDirInfo({inode: 'noparent', parent: 'noparent'})];
     }
-    async.each(dirs, uploadDirectory);
+    if (!dirs) {
+      callback();
+      return;
+    }
+    async.each(dirs, uploadDirectory, function(err) {
+      if (err) {
+        throw new Error("createBoxContent: " + err);
+      }
+      createBoxContent(fileState, callback);
+    });
   });
-};
+}
 
 function uploadDirectory(dir, onDone) {
   console.log("uploadDirectory; dirName: ", dir.name);
@@ -109,13 +141,10 @@ function uploadDirectory(dir, onDone) {
     },
     function(callback) {
       fileState.getDirsInDir(dir, function(dirs) {
-        console.log("looking for dirs in:", dir);
         putFoldersOnBox(dirs, callback);
       });
     },
   ], function() {
-    console.log("DIRECTORY FINISHED:", dir.name);
-    console.log("real dir?", realDir);
     if (realDir) {
       fileState.recordCompletion(dir);
     }
@@ -170,26 +199,19 @@ function onFdInitalized(source, freshStart) {
     onIgnoredFile: callbacks.onIgnoredFile
   };
 
-  if (freshStart) {
+  /* TODO: Get Filename-Validator module async-ified so that it's safe to run a validate
+     followed immediately by the asyncrounous loadPreviousState behavior. */
+  if (program.onlyValidate || freshStart) {
     validator.categorizeDirectoryContents(source, null, options, true);
-  } else {
+    callbacks.onCategorizeComplete();
+  } else if (!program.onlyValidate) {
     loadPreviousState(callbacks.onDoneLoadingFromDisk);
+  } else {
+    closeFiles();
   }
+}
 
-  if (!program.onlyValidate) {
-    createDirectoryTree(validator.getDirs());
-    uploadFiles(validator.getFiles());
-  }
-
-  outputStream.write('\n');
-  var stats = validator.getStats();
-  console.log("# valid", stats.validCounts.files);
-  console.log("# valid dirs", stats.validCounts.dirs);
-  console.log("# bad file lengths", stats.badCounts.long);
-  console.log("# bad file chars", stats.badCounts.unprintable);
-  console.log("# bad whitespace", stats.badCounts.spaces);
-  console.log("# bytes", stats.bytes);
-
+function closeFiles() {
   for (var fdType in fds) {
     if (fds.hasOwnProperty(fdType)) {
       if (fds[fdType]) {
@@ -230,9 +252,9 @@ function initializeFds(fresh, callback) {
 }
 
 function loadPreviousState(doneCallback) {
+  // TODO: Switch this over to async.serial.
   console.log("loading previous");
   var filesProcessing = 0;
-
   filesProcessing += 1;
   fileState.loadFiles("bad", function() {
     filesProcessing -= 1;
@@ -360,7 +382,7 @@ function putFolderOnBox(dir, doneCallback) {
   // need to make a folder in.
 
   if (dir.issues.length !== 0) {
-    console.log("BAD DIR, SHOULD NOT SYNC");
+    console.log("BAD DIR, SHOULD NOT SYNC", dir.localId);
     doneCallback();
     return;
   }
@@ -370,16 +392,11 @@ function putFolderOnBox(dir, doneCallback) {
       findDirParentRemote(info, callback);
     },
     function(callback) {
-      console.log("Starting to sync:", dir);
-      console.log("Target Remote Id", info.remoteId);
-      console.log("New folder Name", dir.name);
       client.folders.create(info.remoteId, dir.name, function(err, response) {
-        callbacks.onFolderComplete(dir, err, response);
-        fileState.storeDir('valid', dir, callback);
+        callbacks.onFolderComplete(dir, err, response, callback);
       });
     },
   ], function() {
-      console.log("DONE WITH BOX.COM FOR A DIR");
       doneCallback()
     });
 }

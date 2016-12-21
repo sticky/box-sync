@@ -11,6 +11,8 @@ var TABLE_FILE_ISSUES = 'File_Issues';
 var TABLE_FILE_CLASS = 'File_Class';
 var TABLE_DIR_PROGRESS = 'Directory_Progress';
 var TABLE_FILE_PROGRESS = 'Files_Progress';
+var TABLE_DIR_ERROR = 'Directory_Failures';
+var TABLE_FILE_ERROR = 'File_Failures';
 var CLASS_ENUM  = {
   'bad': 1,
   'valid': 2,
@@ -28,6 +30,10 @@ function truncateEverything(callback) {
   var stmt = 'DELETE FROM ';
   // Order matters!  Foreign key constraints.
   var tables = [
+    TABLE_DIR_ERROR,
+    //TABLE_FILE_ERROR,
+    TABLE_DIR_PROGRESS,
+    TABLE_FILE_PROGRESS,
     TABLE_FILE_CLASS,
     TABLE_DIR_CLASS,
     TABLE_FILE_ISSUES,
@@ -362,6 +368,27 @@ function storeDirectoryProgress(dirId, done, onFinish) {
   });
 }
 
+function storeDirectoryFailure(dirId, errNum, errTxt, onFinish) {
+  var mainTable = TABLE_DIR_ERROR;
+  var updateParams = {
+    $dir: dirId,
+    $num: errNum,
+    $txt: errTxt
+  };
+  var updateStr = 'INSERT OR REPLACE INTO ';
+  var valuesStr = ' (Dir_Id_Num, Error_Code, Error_Blob) VALUES ($dir, $num, $txt);';
+  setForeignKeysPragma();
+
+  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+    if (err) {
+      throw new Error("Db.store failure error: " + err);
+    }
+    if (onFinish) {
+      onFinish();
+    }
+  });
+}
+
 FilesDb.startOver = function(callback) {
   truncateEverything(callback);
 };
@@ -384,7 +411,11 @@ FilesDb.store = function(type, classification, itemInfo, doneCallback) {
         function(callback) {
           storeDirClass(classification, itemInfo.localId, callback);
         }
-      ], function() {console.log("DONE DOING THE STORAGE"); doneCallback()});
+      ], function(err) {
+        //console.log(err);
+        //console.log("DONE DOING THE STORAGE '%s'", doneCallback);
+        if (doneCallback) {doneCallback()};
+      });
       break;
     case 'file':
       async.series([
@@ -397,7 +428,11 @@ FilesDb.store = function(type, classification, itemInfo, doneCallback) {
         function(callback) {
           storeFileClass(classification, itemInfo.localFolderId, itemInfo.name, callback);
         }
-      ], function() {console.log("DONE DOING THE STORAGE"); doneCallback()});
+      ], function(err) {
+        //console.log(err);
+        //console.log("DONE DOING THE STORAGE '%s'", doneCallback);
+        if (doneCallback) {doneCallback()};
+      });
       break;
     default:
       throw Error("FilesDb.store::: Invalid type.");
@@ -407,7 +442,7 @@ FilesDb.store = function(type, classification, itemInfo, doneCallback) {
 FilesDb.loadSingleDirProgress = function(callback) {
   loadIncompleteProgress('dir', function(row) {
     console.log("load single progress", row);
-    if (row.Dir_Id) {
+    if (row && row.Dir_Id) {
       loadSingleDir(row.Dir_Id, callback);
     } else {
       callback(row);
@@ -442,6 +477,10 @@ FilesDb.loadDirsFrom = function(dirId, doneCallback) {
 
 FilesDb.storeDirProgress = function(dir, value, callback) {
   storeDirectoryProgress(dir, value, callback);
+}
+
+FilesDb.storeDirError = function(dirNum, errorNum, errorText, callback) {
+  storeDirectoryFailure(dirNum, errorNum, errorText, callback);
 }
 
 

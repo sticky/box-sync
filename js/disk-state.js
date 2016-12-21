@@ -101,6 +101,10 @@ DiskState.prototype.storeFile = function(classification, fileInfo, doneCallback)
   FileDb.store('file', classification, fileInfo, doneCallback);
 };
 
+DiskState.prototype.storeDirError = function(dir, err, response, callback) {
+  FileDb.storeDirError(dir.localId, err.statusCode, err.message, callback);
+};
+
 DiskState.prototype.loadDirs = function(classification, completeCallback) {
   var self = this;
   FileDb.loadAll('dir', classification, function(rows) {
