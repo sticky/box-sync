@@ -9,7 +9,18 @@ var FileDb = require('./files-db');
 var INIT_VALID_FILES = {files: [], dirs: []};
 var INIT_BADS = {files: [], dirs: [], ignores: []};
 
-function dbRowToFile(row) {
+// Will be a dictonary of local ID numbers keying to remote ID number values.
+var folderIdMap = {};
+
+var dirCache = {id: 0, dir: new StickyDir({})};
+var fileCache = {id: 0, dir: new StickyFile({})};
+
+// Try to uniquely ID a file.
+function fileHash(file) {
+  return '' + file.name + file.localFolderId;
+}
+
+function dbRowToFile(row, shouldCache) {
   var fileOpts = {
     localFolderId: row.Folder_Id,
     path: row.Full_Path,
@@ -18,17 +29,14 @@ function dbRowToFile(row) {
   };
   var newFile = new StickyFile(fileOpts);
 
-  switch(row.Class) {
-    case 1:
-      this.bad.files.push(newFile);
-      break;
-    case 2:
-      this.valid.files.push(newFile);
-      break;
+  if (shouldCache) {
+    fileCache[fileHash(newFile)] = newFile;
   }
+
+  return newFile;
 }
 
-function dbRowToDir(row) {
+function dbRowToDir(row, shouldCache) {
   var fileOpts = {
     inode: row.Sys_Id_Num,
     parent: row.Parent_Id,
@@ -39,14 +47,11 @@ function dbRowToDir(row) {
   };
   var newDir = new StickyDir(fileOpts);
 
-  switch(row.Class) {
-    case 1:
-      this.bad.dirs.push(newDir);
-      break;
-    case 2:
-      this.valid.dirs.push(newDir);
-      break;
+  if (shouldCache) {
+    dirCache[newDir.inode] = newDir;
   }
+
+  return newDir;
 }
 
 function getRowIssues(row) {
@@ -61,6 +66,10 @@ function getRowIssues(row) {
     issueArr.push('spaces');
   }
   return issueArr;
+}
+
+function dbProgressToDir(row, callback) {
+  callback(dbRowToDir);
 }
 
 function DiskState() {
@@ -95,22 +104,105 @@ DiskState.prototype.storeFile = function(classification, fileInfo, doneCallback)
 DiskState.prototype.loadDirs = function(classification, completeCallback) {
   var self = this;
   FileDb.loadAll('dir', classification, function(rows) {
-    rows.forEach(dbRowToDir.bind(self));
+    rows.forEach(function(row) {
+      var dir = dbRowToDir(row);
+      switch(row.Class) {
+        case 1:
+          self.bad.dirs.push(dir);
+          break;
+        case 2:
+          self.valid.dirs.push(dir);
+          break;
+      }
+    });
     completeCallback();
+  });
+};
+
+DiskState.prototype.getIncompleteDirs = function(completeCallback) {
+  var self = this;
+  console.log("get progress");
+  FileDb.loadSingleDirProgress(function(row) {
+    var dir;
+    if (row === false) {
+      completeCallback(false);
+      return;
+    } else if(!row) {
+      // Undefined or null?  Probably nothing unfinished on the list.
+      console.log("Nothing left to do?");
+      completeCallback();
+      return;
+    }
+    dir = [dbRowToDir(row)];
+    completeCallback(dir);
   });
 };
 
 DiskState.prototype.loadFiles = function(classification, completeCallback) {
   var self = this;
   FileDb.loadAll('file', classification, function(rows) {
-    rows.forEach(dbRowToFile.bind(self));
+    rows.forEach(function(row) {
+      var file = dbRowToFile.bind(self);
+
+      switch(row.Class) {
+        case 1:
+          self.bad.files.push(file);
+          break;
+        case 2:
+          self.valid.files.push(file);
+          break;
+      }
+    });
     completeCallback();
   });
 };
 
-DiskState.prototype.getRemoteId = function(folderId) {
-  console.error("getRemoteId unimplemented");
-  return 0;
+DiskState.prototype.addRemoteId = function(localDirId, remoteId) {
+  folderIdMap[localDirId] = remoteId;
 }
+DiskState.prototype.getRemoteDirId = function(searchInfo, onDoneCallback) {
+  console.log("search info", searchInfo);
+  // Hopefully this has been requested before so we can avoid slower DB hits.
+  if (folderIdMap[searchInfo.dirId]) {
+    searchInfo.remoteId = folderIdMap[searchInfo.dirId];
+    onDoneCallback();
+  } else {
+    FileDb.loadRemoteIdForDir(searchInfo.dirId, function(folderId) {
+      console.log("Found folder id :", folderId);
+      folderIdMap[searchInfo.dirId] = folderId;
+      searchInfo.remoteId = folderId;
+      onDoneCallback();
+    });
+  }
+}
+
+DiskState.prototype.getDirsInDir = function(dir, callback) {
+  console.log("LOOKING FOR DIRS IN DIR:", dir);
+  var self = this;
+  FileDb.loadDirsFrom(dir.localId, function(rows) {
+    var dirs = [];
+
+    rows.forEach(function(row) {
+      console.log(row);
+      dirs.push(dbRowToDir(row));
+    });
+    callback(dirs);
+  });
+};
+
+DiskState.prototype.getFilesInDir = function(dir, callback) {
+  console.error("getFilesInDir not implemented");
+  callback();
+};
+
+DiskState.prototype.recordStart = function(dir, callback) {
+  console.log("recording the start of", dir);
+  FileDb.storeDirProgress(dir.localId, 0, callback);
+};
+
+DiskState.prototype.recordCompletion = function(dir, callback) {
+  console.log("recording the completion of", dir);
+  FileDb.storeDirProgress(dir.localId, 1, callback);
+};
 
 module.exports = DiskState;

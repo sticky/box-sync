@@ -9,6 +9,8 @@ var TABLE_DIR_ISSUES = 'Directory_Issues';
 var TABLE_DIR_CLASS = 'Directory_Class';
 var TABLE_FILE_ISSUES = 'File_Issues';
 var TABLE_FILE_CLASS = 'File_Class';
+var TABLE_DIR_PROGRESS = 'Directory_Progress';
+var TABLE_FILE_PROGRESS = 'Files_Progress';
 var CLASS_ENUM  = {
   'bad': 1,
   'valid': 2,
@@ -95,15 +97,9 @@ function storeFile(localFolderId, fullPath, name, onDoneCallback) {
   });
 }
 
+
+
 function loadDirs(classification, onFinish) {
-  /*SELECT * FROM Directories d INNER JOIN Directory_Class dc
-   ON d.Sys_Id_Num = dc.Dir_Id
-   INNER JOIN Directory_Issues di
-   ON d.Sys_Id_Num = di.DirId
-   WHERE dc.Class = 2 */
-
-
-
   var stmt = 'SELECT * FROM ' + TABLE_DIRS + ' d INNER JOIN ' + TABLE_DIR_CLASS + ' dc ';
   stmt += 'ON d.Sys_Id_Num = dc.Dir_Id ';
   stmt += 'INNER JOIN ' + TABLE_DIR_ISSUES + ' di ';
@@ -122,11 +118,58 @@ function loadDirs(classification, onFinish) {
   });
 }
 
-/*SELECT * FROM Files f INNER JOIN File_Class fc
- ON f.Folder_Id = fc.Folder_Id AND f.Name = fc.File_Name
- INNER JOIN File_Issues fi
- ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name
- WHERE fc.Class = 1 */
+function loadDirContents(dirId, what, callback) {
+  console.log("loadDirContents", dirId);
+  switch(what) {
+    case 'dir':
+      loadDirsWithParent(dirId, callback);
+      break;
+    default:
+      throw new Error("loadDirContents: unrecognized type.  (" + what + ")");
+      break;
+  }
+}
+
+function loadDirsWithParent(dirId, callback) {
+  var stmt = 'SELECT * FROM ' + TABLE_DIRS + ' d INNER JOIN ' + TABLE_DIR_CLASS + ' dc ';
+  stmt += 'ON d.Sys_Id_Num = dc.Dir_Id ';
+  stmt += 'INNER JOIN ' + TABLE_DIR_ISSUES + ' di ';
+  stmt += 'ON d.Sys_Id_Num = di.DirId';
+
+  stmt += ' WHERE d.Parent_Id = $id'
+  var params = {$id:dirId };
+
+  console.log("loadDirsWithParent", dirId);
+
+  db.all(stmt, params, function(err, rows) {
+    if (err) {
+      console.error("DirId: ", dirId);
+      throw new Error("Db.loadDirs error: " + err);
+    }
+    console.log("done with parent", rows);
+    if (callback) {callback(rows);}
+  });
+}
+
+function loadSingleDir(dirId, onFinish) {
+  var stmt = 'SELECT * FROM ' + TABLE_DIRS + ' d INNER JOIN ' + TABLE_DIR_CLASS + ' dc ';
+  stmt += 'ON d.Sys_Id_Num = dc.Dir_Id ';
+  stmt += 'INNER JOIN ' + TABLE_DIR_ISSUES + ' di ';
+  stmt += 'ON d.Sys_Id_Num = di.DirId';
+
+  stmt += ' WHERE d.Sys_Id_Num = ' + dirId;
+
+  db.get(stmt, [], function(err, row) {
+    if (err) {
+      console.log("info searching", dirId);
+      throw new Error("Db.loadSingleDir error: " + err);
+    }
+    if (onFinish) {
+      onFinish.call(this, row);
+    }
+  });
+}
+
 function loadFiles(classification, onFinish) {
   var stmt = 'SELECT * FROM ' + TABLE_FILES + ' f INNER JOIN ' + TABLE_FILE_CLASS + ' fc ';
   stmt += 'ON f.Folder_Id = fc.Folder_Id AND f.Name = fc.File_Name ';
@@ -243,6 +286,82 @@ function storeFileClass(classification, folderId, name, onDoneCallback) {
   });
 }
 
+function loadIncompleteProgress(type, onFinish) {
+  var query = 'SELECT * FROM ';
+  var countQuery = 'SELECT COUNT(*) FROM ';
+  var where = '';
+  var totalProgressRows;
+  var result;
+  switch(type) {
+    case 'file':
+      query += TABLE_FILE_PROGRESS;
+      countQuery += TABLE_FILE_PROGRESS;
+      where = ' WHERE Done = 0';
+      break;
+    case 'dir':
+      query += TABLE_DIR_PROGRESS;
+      countQuery += TABLE_DIR_PROGRESS;
+      where = ' WHERE Done = 0';
+      break;
+    default:
+      throw new Error("Db.loadIncompleteProgress error: unrecognized type '" + type + "'");
+  }
+
+  async.series([
+    function(callback) {
+      console.log("first step");
+      db.get(countQuery, function(err, row) {
+        if (err) {
+          throw new Error("Db.loadIncompleteProgress error: " + err);
+        }
+
+        console.log("count row?", row['COUNT(*)']);
+        totalProgressRows = row['COUNT(*)'];
+        callback();
+      });
+    },
+    function(callback) {
+      console.log("next step");
+      db.get(query + where, function(err, row) {
+        if (err) {
+          throw new Error("Db.loadIncompleteProgress error: " + err);
+        }
+        result = row;
+        callback.call(this, row);
+      });
+    },
+  ], function() {
+    console.log("done");
+    if (totalProgressRows == 0) {
+      result = false;
+    }
+    if (onFinish) {
+      console.log("calling finish");
+      onFinish.call(this, result);
+    }
+  });
+}
+
+function storeDirectoryProgress(dirId, done, onFinish) {
+  var mainTable = TABLE_DIR_PROGRESS;
+  var updateParams = {
+    $dir: dirId,
+    $done: done,
+  };
+  var updateStr = 'INSERT OR REPLACE INTO ';
+  var valuesStr = ' (Dir_Id, Done) VALUES ($dir, $done);';
+  setForeignKeysPragma();
+
+  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+    if (err) {
+      throw new Error("Db.store progress error: " + err);
+    }
+    if (onFinish) {
+      onFinish();
+    }
+  });
+}
+
 FilesDb.startOver = function(callback) {
   truncateEverything(callback);
 };
@@ -285,6 +404,17 @@ FilesDb.store = function(type, classification, itemInfo, doneCallback) {
   }
 };
 
+FilesDb.loadSingleDirProgress = function(callback) {
+  loadIncompleteProgress('dir', function(row) {
+    console.log("load single progress", row);
+    if (row.Dir_Id) {
+      loadSingleDir(row.Dir_Id, callback);
+    } else {
+      callback(row);
+    }
+  });
+}
+
 FilesDb.loadAll = function(type, classification, callback) {
   switch(type) {
     case 'file':
@@ -299,5 +429,19 @@ FilesDb.loadAll = function(type, classification, callback) {
       break;
   }
 };
+
+FilesDb.loadRemoteIdForDir = function(dirId, doneCallback) {
+  loadSingleDir(dirId, function(row) {
+    doneCallback(row.Remote_Id);
+  });
+};
+
+FilesDb.loadDirsFrom = function(dirId, doneCallback) {
+  loadDirContents(dirId, 'dir', doneCallback);
+};
+
+FilesDb.storeDirProgress = function(dir, value, callback) {
+  storeDirectoryProgress(dir, value, callback);
+}
 
 

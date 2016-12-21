@@ -17,10 +17,9 @@ var Db = require('./js/files-db');
 
 var validator = require('./js/filename-validator');
 
-var rootFolderId = -1;
+var remoteRootId = -1;
 
 var FILENAMES = {
-  processedFiles: 'files/ProcessedFiles.txt',
   ignoredFiles: 'files/Ignored.txt',
 };
 
@@ -83,10 +82,46 @@ callbacks.onFolderComplete = function(folder, error, response) {
   }
 }
 
-callbacks.onDoneLoadingFiles =function(fileState) {
-  console.log("done!!!", fileState.getCounts());
-  makeFoldersOnBox(fileState.valid.dirs);
+callbacks.onDoneLoadingFromDisk = function(fileState) {
+  console.log("done loading!!!", fileState.getCounts());
+  fileState.getIncompleteDirs(function(dirs) {
+    console.log("incompletes", dirs);
+    if (dirs === false)  {
+      console.log("No progress recorded.");
+      // Fake the root directory as a starting point.
+      dirs = [new StickyDirInfo({inode: 'noparent', parent: 'noparent'})];
+    }
+    async.each(dirs, uploadDirectory);
+  });
 };
+
+function uploadDirectory(dir, onDone) {
+  console.log("uploadDirectory; dirName: ", dir.name);
+  var realDir = dir.localId !== 'noparent';
+  if (realDir) {
+    fileState.recordStart(dir);
+  }
+  async.series([
+    function(callback) {
+      fileState.getFilesInDir(dir, function(files) {
+        putFilesOnBox(files, callback);
+      });
+    },
+    function(callback) {
+      fileState.getDirsInDir(dir, function(dirs) {
+        console.log("looking for dirs in:", dir);
+        putFoldersOnBox(dirs, callback);
+      });
+    },
+  ], function() {
+    console.log("DIRECTORY FINISHED:", dir.name);
+    console.log("real dir?", realDir);
+    if (realDir) {
+      fileState.recordCompletion(dir);
+    }
+    onDone();
+  });
+}
 
 var sdk = new BoxSDK({
   clientID: clientID,
@@ -119,17 +154,7 @@ program
   //.option('-f, --files', 'Only process files (unimplmeneted)')
   .action(function(source, dest) {
     var freshStart = program.assumeNew ? true : false;
-    // A simplisitc check; do any of our files already have content?
-    var key;
-    var emptyFiles = true;
-    rootFolderId = dest;
-    for(key in FILENAMES) {
-      if (freshStart) {break;}
-      if (FILENAMES.hasOwnProperty(key)) {
-        // All files must be empty.
-        emptyFiles = emptyFiles && !hasContent(FILENAMES[key]);
-      }
-    }
+    remoteRootId = dest;
 
     initializeFds(freshStart, onFdInitalized.bind(this, source, freshStart));
   })
@@ -148,7 +173,7 @@ function onFdInitalized(source, freshStart) {
   if (freshStart) {
     validator.categorizeDirectoryContents(source, null, options, true);
   } else {
-    loadPreviousState(callbacks.onDoneLoadingFiles);
+    loadPreviousState(callbacks.onDoneLoadingFromDisk);
   }
 
   if (!program.onlyValidate) {
@@ -312,29 +337,63 @@ function uploadFiles(uploadFileList) {
   uploadFileList.forEach(uploadFile);
 }
 
-function makeFoldersOnBox(folders) {
-  var foldersToMade
-  // See Disk-state; this list is built using a type of DFS algo,
-  // so the root node is the very last one.
-
-  // We also need to force synchronous behavior here because folders
-  // have parents and we need complete parents on Box.com to get a valid
-  // parent ID number.
-  async.eachSeries(folders.reverse(), makeFolderOnBox);
+function putFoldersOnBox(dirs, doneCallback) {
+  console.log("************* dirs *************", dirs);
+  async.eachSeries(dirs, function(dir, callback) {
+    fileState.recordStart(dir, function() {
+      putFolderOnBox(dir, callback);
+    })
+  }, function(err) {
+    doneCallback();
+  });
 }
 
-function makeFolderOnBox(folder, callback) {
-  console.log("time to make folders!", folder);
-  var parentId;
-  if (!folder.parentId || folder.parentId === 'noparent') {
-    parentId = rootFolderId;
-  } else {
-    parentId = fileState.getRemoteId(folder.parentId);
+function putFilesOnBox(files, doneCallback) {
+  console.error("Don't have file putting implemented yet.");
+  if (doneCallback) {
+    doneCallback();
   }
-  client.folders.create(parentId, folder.name, function(err, response) {
-    callbacks.onFolderComplete(folder, err, response);
-    fileState.storeDir('valid', folder, callback);
-  });
+}
+
+function putFolderOnBox(dir, doneCallback) {
+  // We have a directory, but now we need to figure out the Box.com ID we
+  // need to make a folder in.
+
+  if (dir.issues.length !== 0) {
+    console.log("BAD DIR, SHOULD NOT SYNC");
+    doneCallback();
+    return;
+  }
+  var info = {remoteId: 0, dirId: dir.parentId};
+  async.series([
+    function(callback) {
+      findDirParentRemote(info, callback);
+    },
+    function(callback) {
+      console.log("Starting to sync:", dir);
+      console.log("Target Remote Id", info.remoteId);
+      console.log("New folder Name", dir.name);
+      client.folders.create(info.remoteId, dir.name, function(err, response) {
+        callbacks.onFolderComplete(dir, err, response);
+        fileState.storeDir('valid', dir, callback);
+      });
+    },
+  ], function() {
+      console.log("DONE WITH BOX.COM FOR A DIR");
+      doneCallback()
+    });
+}
+
+function findDirParentRemote(searchInfo, callback) {
+  // Are we at the bottom level of our folder tree?
+  console.log("search info", searchInfo);
+  if (!searchInfo.dirId || searchInfo.dirId === 'noparent') {
+    searchInfo.remoteId = remoteRootId;
+    callback();
+  } else {
+    // Guess we need to find our parent.
+    fileState.getRemoteDirId(searchInfo, callback);
+  }
 }
 
 function uploadFile(fileInfo) {
@@ -347,7 +406,7 @@ function uploadFile(fileInfo) {
   var filestat = fs.statSync(fullPath);
   var fileSize = filestat.size;
 
-  var folderId = rootFolderId;
+  var folderId = remoteRootId;
   fileBar.total = fileSize;
   fileBar.tick(0);
 
