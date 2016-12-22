@@ -54,6 +54,15 @@ function truncateProgress(callback) {
   truncateTables(tables, callback);
 }
 
+function truncateErrors(callback) {
+  // Order matters!  Foreign key constraints in play.
+  var tables = [
+    TABLE_DIR_ERROR,
+    TABLE_FILE_ERROR,
+  ];
+  truncateTables(tables, callback);
+}
+
 function truncateTables(tables, callback) {
   // There isn't a truncate?  This is close enough.
   var stmt = 'DELETE FROM ';
@@ -493,6 +502,10 @@ FilesDb.startOver = function(callback) {
 
 FilesDb.purgeProgress = function(callback) {
   truncateProgress(callback);
+};
+
+FilesDb.purgeErrors = function(callback) {
+  truncateErrors(callback);
 };
 
 //TODO: Figure out a way to make this more like a transaction, since we have multiple statements to complete.

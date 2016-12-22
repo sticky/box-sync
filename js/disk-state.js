@@ -2,6 +2,7 @@
 
 var fs = require('fs');
 var readline = require('readline');
+var async = require('async');
 var StickyFile = require('./file-info');
 var StickyDir = require('./dir-info');
 var FileDb = require('./files-db');
@@ -94,7 +95,20 @@ DiskState.clear = function(callback) {
 };
 
 DiskState.clearProgress = function(callback) {
-  FileDb.purgeProgress(callback);
+  async.race([
+    function(cb) {
+      FileDb.purgeProgress(cb);
+    },
+    function(cb) {
+      FileDb.purgeErrors(cb);
+    }
+  ], function(err) {
+    if (err) {
+      throw new Error(err);
+    }
+    callback();
+
+  });
 };
 
 DiskState.prototype.storeDir = function(classification, dirInfo, doneCallback) {
