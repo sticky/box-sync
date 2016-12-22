@@ -192,7 +192,7 @@ DiskState.prototype.getRemoteDirId = function(searchInfo, onDoneCallback) {
 
 DiskState.prototype.getDirsInDir = function(dir, callback) {
   var self = this;
-  FileDb.loadDirsFrom(dir.localId, function(rows) {
+  FileDb.loadDirsFrom(dir.localId, 'valid', function(rows) {
     var dirs = [];
 
     rows.forEach(function(row) {
@@ -204,7 +204,7 @@ DiskState.prototype.getDirsInDir = function(dir, callback) {
 
 DiskState.prototype.getFilesInDir = function(dir, callback) {
   var self = this;
-  FileDb.loadFilesFrom(dir.localId, function(rows) {
+  FileDb.loadFilesFrom(dir.localId, 'valid', function(rows) {
     var files = [];
 
     rows.forEach(function(row) {

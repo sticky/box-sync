@@ -140,14 +140,13 @@ function loadDirs(classification, onFinish) {
   });
 }
 
-function loadDirContents(dirId, what, callback) {
-  console.log("loadDirContents", dirId);
+function loadDirContents(dirId, what, classification, callback) {
   switch(what) {
     case 'dir':
-      loadDirsWithParent(dirId, callback);
+      loadDirsWithParent(dirId, classification, callback);
       break;
     case 'file':
-      loadFilesWithParent(dirId, callback);
+      loadFilesWithParent(dirId, classification, callback);
       break;
     default:
       throw new Error("loadDirContents: unrecognized type.  (" + what + ")");
@@ -155,17 +154,17 @@ function loadDirContents(dirId, what, callback) {
   }
 }
 
-function loadDirsWithParent(dirId, callback) {
+function loadDirsWithParent(dirId, classification, callback) {
   console.warn("Deprecated: loadDirsWithParent");
-  loadFromParent('dir', dirId, callback);
+  loadFromParent('dir', dirId, classification, callback);
 }
 
-function loadFilesWithParent(dirId, callback) {
+function loadFilesWithParent(dirId, classification, callback) {
   console.warn("Deprecated: loadFilesWithParent");
-  loadFromParent('file', dirId, callback);
+  loadFromParent('file', dirId, classification, callback);
 }
 
-function loadFromParent(type, parentId, callback) {
+function loadFromParent(type, parentId, classification, callback) {
   var stmt = '';
   var params = {};
   var table = TABLE_FILES;
@@ -182,6 +181,10 @@ function loadFromParent(type, parentId, callback) {
       stmt += 'ON d.Sys_Id_Num = di.DirId';
       stmt += ' WHERE d.Parent_Id = $dirId';
       params = {$dirId:parentId };
+      if (classification) {
+        stmt += ' AND dc.Class = $class';
+        params['$class'] = CLASS_ENUM[classification];
+      }
       break;
     case 'file':
       stmt = 'SELECT * FROM ' + TABLE_FILES + ' f INNER JOIN ' + TABLE_FILE_CLASS + ' fc ';
@@ -189,7 +192,11 @@ function loadFromParent(type, parentId, callback) {
       stmt += 'INNER JOIN ' + TABLE_FILE_ISSUES + ' fi ';
       stmt += 'ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name ';
       stmt += 'WHERE f.Folder_Id = $dirId';
-      params = {$dirId:parentId };
+      params = {$dirId:parentId};
+      if (classification) {
+        stmt += ' AND fc.Class = $class';
+        params['$class'] = CLASS_ENUM[classification];
+      }
       break;
     default:
       throw new Error('FilesDb:::loadFromParent()  unrecognized type (' + type + ')');
@@ -566,12 +573,12 @@ FilesDb.loadRemoteIdForDir = function(dirId, doneCallback) {
   });
 };
 
-FilesDb.loadDirsFrom = function(dirId, doneCallback) {
-  loadDirContents(dirId, 'dir', doneCallback);
+FilesDb.loadDirsFrom = function(dirId, classification, doneCallback) {
+  loadDirContents(dirId, 'dir', classification, doneCallback);
 };
 
-FilesDb.loadFilesFrom = function(dirId, doneCallback) {
-  loadDirContents(dirId, 'file', doneCallback);
+FilesDb.loadFilesFrom = function(dirId, classification, doneCallback) {
+  loadDirContents(dirId, 'file', classification, doneCallback);
 };
 
 FilesDb.storeDirProgress = function(dir, value, callback) {

@@ -91,7 +91,6 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
 }
 
 callbacks.onFileComplete = function(file, error, response, completeCallback) {
-  console.log("FILE COMPLETED");
   if (response) {
     file.remoteId = response.id;
   }
@@ -117,7 +116,6 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
 callbacks.onDoneLoadingFromDisk = function(fileState) {
   if (!program.onlyValidate) {
     createBoxContent(fileState, function() {
-      console.log("*** create box content fininished!!!!! ****");
     });
   }
 
@@ -387,6 +385,9 @@ function formatPathProgress(path, stream) {
 function putFoldersOnBox(dirs, doneCallback) {
   async.eachSeries(dirs, function(dir, callback) {
     diskState.recordStart('dir', dir, function() {
+      if (dir.issues.length !== 0) {
+        throw new Error("BAD DIR, SHOULD NOT BE TRYING TO SYNC: " + dir.localId);
+      }
       uploader.makeDir(dir, callbacks.onFolderComplete, callback);
     })
   }, function() {
@@ -395,9 +396,11 @@ function putFoldersOnBox(dirs, doneCallback) {
 }
 
 function putFilesOnBox(files, doneCallback) {
-  console.log("Putting files on box.");
   async.eachSeries(files, function(file, callback) {
     diskState.recordStart('file', file, function() {
+      if (file.issues.length !== 0) {
+        throw new Error("BAD FILE, SHOULD NOT BE TRYING TO SYNC: " + file.localFolderId);
+      }
       uploader.makeFile(file, callbacks.onFileComplete, callback);
     });
   }, function() {

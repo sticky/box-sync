@@ -13,11 +13,6 @@ function putFolderOnBox(dir, itemComplete, doneCallback) {
   // need to make a folder in.
   var self = this;
 
-  if (dir.issues.length !== 0) {
-    console.log("BAD DIR, SHOULD NOT SYNC", dir.localId);
-    doneCallback();
-    return;
-  }
   var info = {remoteId: 0, dirId: dir.parentId};
   async.series([
     function(callback) {
@@ -39,13 +34,6 @@ function putFileOnBox(file, itemComplete, doneCallback) {
   var fsStat = fs.statSync(fullFileName);
   if (!fsStat.isFile()) {
     throw new Error('Uploader.putFileOnBox::: Not a file. (' + fullFileName + ')');
-  }
-
-  console.log("putting file on Box", file);
-  if (file.issues.length !== 0) {
-    console.log("BAD FILE, SHOULD NOT SYNC", file.localFolderId);
-    doneCallback();
-    return;
   }
 
   var info = {dirRemoteId: 0, dirId: file.localFolderId};
