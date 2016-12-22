@@ -5,10 +5,7 @@ var program = require('commander');
 var ProgressBar = require('progress');
 var async = require("async");
 
-var BoxSDK = require('box-node-sdk');
-var clientID = require('./files/tokens.env').clientID;
-var developerToken = require('./files/tokens.env').developerToken;
-var clientSecret = require('./files/tokens.env').clientSecret;
+var BoxUploader = require('./js/box-uploader.js');
 var StickyFileInfo = require('./js/file-info');
 var StickyDirInfo = require('./js/dir-info');
 var FileState = require('./js/disk-state');
@@ -17,8 +14,6 @@ var Db = require('./js/files-db');
 
 var validator = require('./js/filename-validator');
 
-var remoteRootId = -1;
-
 var FILENAMES = {
   ignoredFiles: 'files/Ignored.txt',
 };
@@ -26,7 +21,9 @@ var FILENAMES = {
 var outputStream = process.stdout;
 var lastStrRendered = '';
 var callbacks = {};
-var fileState = new FileState();
+var diskState = new FileState();
+var uploader = new BoxUploader(diskState);
+
 callbacks.onDirectoryStarted = function (path) {
   var progressStr = formatPathProgress(path, outputStream);
   if (lastStrRendered !== progressStr) {
@@ -38,18 +35,18 @@ callbacks.onDirectoryStarted = function (path) {
 }
 
 callbacks.onBadDirectory = function (dirInfo) {
-  fileState.storeDir('bad', dirInfo);
+  diskState.storeDir('bad', dirInfo);
 }
 
 callbacks.onBadFile = function (fileInfo) {
-  fileState.storeFile('bad', fileInfo);
+  diskState.storeFile('bad', fileInfo);
 }
 callbacks.onValidDir = function (dirInfo) {
-  fileState.storeDir('valid', dirInfo);
+  diskState.storeDir('valid', dirInfo);
 }
 
 callbacks.onValidFile = function (fileInfo) {
-  fileState.storeFile('valid', fileInfo);
+  diskState.storeFile('valid', fileInfo);
 }
 
 callbacks.onIgnoredFile = function(path, file) {
@@ -85,15 +82,20 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
   async.series([
     function(callback) {
       if (error) {
-        fileState.storeDirError(dir, error, response, callback);
+        diskState.storeDirError(dir, error, response, callback);
       } else {
         callback();
       }
     },
     function(callback) {
-      fileState.storeDir('valid', dir, callback);
+      diskState.storeDir('valid', dir, callback);
     }
-  ], completeCallback);
+  ], function(err) {
+    if (err) {
+      console.error("onFolderComplete errror", err);
+    }
+    completeCallback();
+  });
 }
 
 callbacks.onDoneLoadingFromDisk = function(fileState) {
@@ -131,34 +133,27 @@ function uploadDirectory(dir, onDone) {
   console.log("uploadDirectory; dirName: ", dir.name);
   var realDir = dir.localId !== 'noparent';
   if (realDir) {
-    fileState.recordStart(dir);
+    diskState.recordStart(dir);
   }
   async.series([
     function(callback) {
-      fileState.getFilesInDir(dir, function(files) {
+      /*diskState.getFilesInDir(dir, function(files) {
         putFilesOnBox(files, callback);
-      });
+      }); */
+      callback();
     },
     function(callback) {
-      fileState.getDirsInDir(dir, function(dirs) {
+      diskState.getDirsInDir(dir, function(dirs) {
         putFoldersOnBox(dirs, callback);
       });
     },
   ], function() {
     if (realDir) {
-      fileState.recordCompletion(dir);
+      diskState.recordCompletion(dir);
     }
     onDone();
   });
 }
-
-var sdk = new BoxSDK({
-  clientID: clientID,
-  clientSecret: clientSecret
-});
-
-// Create a basic API client
-var client = sdk.getBasicClient(developerToken);
 
 // File descriptors
 var fds = {badFiles: null, badDirs: null, validFiles: null, processedFiles: null, validDirs: null, processedDirs: null, ignoredFiles: null};
@@ -183,7 +178,7 @@ program
   //.option('-f, --files', 'Only process files (unimplmeneted)')
   .action(function(source, dest) {
     var freshStart = program.assumeNew ? true : false;
-    remoteRootId = dest;
+    uploader.rootId = dest;
 
     initializeFds(freshStart, onFdInitalized.bind(this, source, freshStart));
   })
@@ -256,35 +251,35 @@ function loadPreviousState(doneCallback) {
   console.log("loading previous");
   var filesProcessing = 0;
   filesProcessing += 1;
-  fileState.loadFiles("bad", function() {
+  diskState.loadFiles("bad", function() {
     filesProcessing -= 1;
     console.log("Done with bads files.", filesProcessing);
     if (filesProcessing <= 0 && doneCallback) {
-      doneCallback(fileState);
+      doneCallback(diskState);
     }
   });
   filesProcessing += 1;
-  fileState.loadDirs("bad", function() {
+  diskState.loadDirs("bad", function() {
     filesProcessing -= 1;
     console.log("Done with bads dirs.", filesProcessing);
     if (filesProcessing <= 0 && doneCallback) {
-      doneCallback(fileState);
+      doneCallback(diskState);
     }
   });
   filesProcessing += 1;
-  fileState.loadDirs("valid", function() {
+  diskState.loadDirs("valid", function() {
     filesProcessing -= 1;
     console.log("Done with good dirs.", filesProcessing);
     if (filesProcessing <= 0 && doneCallback) {
-      doneCallback(fileState);
+      doneCallback(diskState);
     }
   });
   filesProcessing += 1;
-  fileState.loadFiles("valid", function() {
+  diskState.loadFiles("valid", function() {
     filesProcessing -= 1;
     console.log("Done with good files.", filesProcessing);
     if (filesProcessing <= 0 && doneCallback) {
-      doneCallback(fileState);
+      doneCallback(diskState);
     }
   });
 }
@@ -353,84 +348,23 @@ function formatPathProgress(path, stream) {
   return label + pathStart + '...' + pathEnd;
 }
 
-function uploadFiles(uploadFileList) {
-  console.error("uploadFiles:: This needs to be updated.");
-  return;
-  uploadFileList.forEach(uploadFile);
-}
-
 function putFoldersOnBox(dirs, doneCallback) {
-  console.log("************* dirs *************", dirs);
   async.eachSeries(dirs, function(dir, callback) {
-    fileState.recordStart(dir, function() {
-      putFolderOnBox(dir, callback);
+    diskState.recordStart(dir, function() {
+      uploader.makeDir(dir, callbacks.onFolderComplete, callback);
     })
-  }, function(err) {
+  }, function() {
     doneCallback();
   });
 }
 
 function putFilesOnBox(files, doneCallback) {
-  console.error("Don't have file putting implemented yet.");
-  if (doneCallback) {
-    doneCallback();
-  }
-}
-
-function putFolderOnBox(dir, doneCallback) {
-  // We have a directory, but now we need to figure out the Box.com ID we
-  // need to make a folder in.
-
-  if (dir.issues.length !== 0) {
-    console.log("BAD DIR, SHOULD NOT SYNC", dir.localId);
-    doneCallback();
-    return;
-  }
-  var info = {remoteId: 0, dirId: dir.parentId};
-  async.series([
-    function(callback) {
-      findDirParentRemote(info, callback);
-    },
-    function(callback) {
-      client.folders.create(info.remoteId, dir.name, function(err, response) {
-        callbacks.onFolderComplete(dir, err, response, callback);
-      });
-    },
-  ], function() {
-      doneCallback()
-    });
-}
-
-function findDirParentRemote(searchInfo, callback) {
-  // Are we at the bottom level of our folder tree?
-  console.log("search info", searchInfo);
-  if (!searchInfo.dirId || searchInfo.dirId === 'noparent') {
-    searchInfo.remoteId = remoteRootId;
+  async.eachSeries(files, function(file, callback) {
+    /*diskState.recordStart(file, function() {
+      uploader.makeFile(file, callbacks.onFolderComplete, callback);
+    }) */
     callback();
-  } else {
-    // Guess we need to find our parent.
-    fileState.getRemoteDirId(searchInfo, callback);
-  }
-}
-
-function uploadFile(fileInfo) {
-  console.error("uploadFile:: This needs to be updated.");
-  return;
-  var name = fileInfo.file;
-  var path = fileInfo.path;
-  var fullPath = path + '/' + name;
-  var stream = fs.createReadStream(fullPath);
-  var filestat = fs.statSync(fullPath);
-  var fileSize = filestat.size;
-
-  var folderId = remoteRootId;
-  fileBar.total = fileSize;
-  fileBar.tick(0);
-
-  //client.files.preflightUploadFile('' + folderId, {name: name, size: 10000}, null, onPreFileComplete);
-  client.files.uploadFile('' + folderId, name, stream, callbacks.onPreFileComplete);
-
-  stream.on('data', function(chunk) {
-    fileBar.tick(chunk.length);
+  }, function() {
+    doneCallback();
   });
 }
