@@ -76,7 +76,6 @@ callbacks.onPreFileComplete = function(error, response) {
 callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
   var remoteId;
   if (response) {
-    console.log("response id", response.id);
     dir.remoteId = response.id;
   }
   async.series([
@@ -92,14 +91,37 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
     }
   ], function(err) {
     if (err) {
-      console.error("onFolderComplete errror", err);
+      throw Error(err);
+    }
+    completeCallback();
+  });
+}
+
+callbacks.onFileComplete = function(file, error, response, completeCallback) {
+  if (response) {
+    console.log("response id", response.id);
+    file.remoteId = response.id;
+  }
+  async.series([
+    function(callback) {
+      if (error) {
+        diskState.storeFileError(file, error, response, callback);
+      } else {
+        callback();
+      }
+    },
+    function(callback) {
+      diskState.storeDir('valid', file, callback);
+    }
+  ], function(err) {
+    if (err) {
+      throw Error(err);
     }
     completeCallback();
   });
 }
 
 callbacks.onDoneLoadingFromDisk = function(fileState) {
-  console.log("done loading!!!", fileState.getCounts());
 
   if (!program.onlyValidate) {
     createBoxContent(fileState, function() {
@@ -130,26 +152,32 @@ function createBoxContent(fileState, callback) {
 }
 
 function uploadDirectory(dir, onDone) {
-  console.log("uploadDirectory; dirName: ", dir.name);
   var realDir = dir.localId !== 'noparent';
-  if (realDir) {
-    diskState.recordStart(dir);
-  }
   async.series([
     function(callback) {
-      /*diskState.getFilesInDir(dir, function(files) {
+      if (realDir) {
+        diskState.recordStart('dir', dir, callback);
+      } else {
+        callback();
+      }
+    },
+    function(callback) {
+      diskState.getFilesInDir(dir, function(files) {
         putFilesOnBox(files, callback);
-      }); */
-      callback();
+      });
     },
     function(callback) {
       diskState.getDirsInDir(dir, function(dirs) {
         putFoldersOnBox(dirs, callback);
       });
     },
-  ], function() {
+  ], function(err) {
+    if (err) {
+      throw new Error(err);
+    }
+
     if (realDir) {
-      diskState.recordCompletion(dir);
+      diskState.recordCompletion('dir', dir);
     }
     onDone();
   });
@@ -350,7 +378,7 @@ function formatPathProgress(path, stream) {
 
 function putFoldersOnBox(dirs, doneCallback) {
   async.eachSeries(dirs, function(dir, callback) {
-    diskState.recordStart(dir, function() {
+    diskState.recordStart('dir', dir, function() {
       uploader.makeDir(dir, callbacks.onFolderComplete, callback);
     })
   }, function() {
@@ -360,10 +388,9 @@ function putFoldersOnBox(dirs, doneCallback) {
 
 function putFilesOnBox(files, doneCallback) {
   async.eachSeries(files, function(file, callback) {
-    /*diskState.recordStart(file, function() {
-      uploader.makeFile(file, callbacks.onFolderComplete, callback);
-    }) */
-    callback();
+    diskState.recordStart(file, function() {
+      uploader.makeFile('file', file, callbacks.onFileComplete, callback);
+    });
   }, function() {
     doneCallback();
   });

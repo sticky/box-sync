@@ -145,14 +145,14 @@ function loadDirsWithParent(dirId, callback) {
   stmt += ' WHERE d.Parent_Id = $id'
   var params = {$id:dirId };
 
-  console.log("loadDirsWithParent", dirId);
+  //console.log("loadDirsWithParent", dirId);
 
   db.all(stmt, params, function(err, rows) {
     if (err) {
       console.error("DirId: ", dirId);
       throw new Error("Db.loadDirs error: " + err);
     }
-    console.log("done with parent", rows);
+    //console.log("done with parent", rows);
     if (callback) {callback(rows);}
   });
 }
@@ -315,19 +315,19 @@ function loadIncompleteProgress(type, onFinish) {
 
   async.series([
     function(callback) {
-      console.log("first step");
+      //console.log("first step");
       db.get(countQuery, function(err, row) {
         if (err) {
           throw new Error("Db.loadIncompleteProgress error: " + err);
         }
 
-        console.log("count row?", row['COUNT(*)']);
+        //console.log("count row?", row['COUNT(*)']);
         totalProgressRows = row['COUNT(*)'];
         callback();
       });
     },
     function(callback) {
-      console.log("next step");
+      //console.log("next step");
       db.get(query + where, function(err, row) {
         if (err) {
           throw new Error("Db.loadIncompleteProgress error: " + err);
@@ -336,13 +336,13 @@ function loadIncompleteProgress(type, onFinish) {
         callback.call(this, row);
       });
     },
-  ], function() {
-    console.log("done");
+  ], function(err) {
+    //console.log("done loading incomplete", err);
     if (totalProgressRows == 0) {
       result = false;
     }
     if (onFinish) {
-      console.log("calling finish");
+      //console.log("calling finish", result);
       onFinish.call(this, result);
     }
   });
@@ -377,6 +377,28 @@ function storeDirectoryFailure(dirId, errNum, errTxt, onFinish) {
   };
   var updateStr = 'INSERT OR REPLACE INTO ';
   var valuesStr = ' (Dir_Id_Num, Error_Code, Error_Blob) VALUES ($dir, $num, $txt);';
+  setForeignKeysPragma();
+
+  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+    if (err) {
+      throw new Error("Db.store failure error: " + err);
+    }
+    if (onFinish) {
+      onFinish();
+    }
+  });
+}
+
+function storeFileFailure(dirId, fileName, errNum, errTxt, onFinish) {
+  var mainTable = TABLE_FILE_ERROR;
+  var updateParams = {
+    $dir: dirId,
+    $name: fileName,
+    $num: errNum,
+    $txt: errTxt
+  };
+  var updateStr = 'INSERT OR REPLACE INTO ';
+  var valuesStr = ' (Folder_Id, Name, Error_Code, Error_Blob) VALUES ($dir, $name, $num, $txt);';
   setForeignKeysPragma();
 
   db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
@@ -441,7 +463,7 @@ FilesDb.store = function(type, classification, itemInfo, doneCallback) {
 
 FilesDb.loadSingleDirProgress = function(callback) {
   loadIncompleteProgress('dir', function(row) {
-    console.log("load single progress", row);
+    //console.log("load single progress", row);
     if (row && row.Dir_Id) {
       loadSingleDir(row.Dir_Id, callback);
     } else {
@@ -481,6 +503,9 @@ FilesDb.storeDirProgress = function(dir, value, callback) {
 
 FilesDb.storeDirError = function(dirNum, errorNum, errorText, callback) {
   storeDirectoryFailure(dirNum, errorNum, errorText, callback);
+}
+FilesDb.storeFileError = function(fileFolderId, fileName, errorNum, errorText, callback) {
+  storeFileFailure(fileFolderId, fileName, errorNum, errorText, callback);
 }
 
 

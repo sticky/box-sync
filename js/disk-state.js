@@ -105,6 +105,10 @@ DiskState.prototype.storeDirError = function(dir, err, response, callback) {
   FileDb.storeDirError(dir.localId, err.statusCode, err.message, callback);
 };
 
+DiskState.prototype.storeFileError = function(file, err, response, callback) {
+  FileDb.storeFileError(file.localFolderId, file.name, err.statusCode, err.message, callback);
+};
+
 DiskState.prototype.loadDirs = function(classification, completeCallback) {
   var self = this;
   FileDb.loadAll('dir', classification, function(rows) {
@@ -125,7 +129,6 @@ DiskState.prototype.loadDirs = function(classification, completeCallback) {
 
 DiskState.prototype.getIncompleteDirs = function(completeCallback) {
   var self = this;
-  console.log("get progress");
   FileDb.loadSingleDirProgress(function(row) {
     var dir;
     if (row === false) {
@@ -133,7 +136,6 @@ DiskState.prototype.getIncompleteDirs = function(completeCallback) {
       return;
     } else if(!row) {
       // Undefined or null?  Probably nothing unfinished on the list.
-      console.log("Nothing left to do?");
       completeCallback();
       return;
     }
@@ -181,13 +183,11 @@ DiskState.prototype.getRemoteDirId = function(searchInfo, onDoneCallback) {
 }
 
 DiskState.prototype.getDirsInDir = function(dir, callback) {
-  console.log("LOOKING FOR DIRS IN DIR:", dir);
   var self = this;
   FileDb.loadDirsFrom(dir.localId, function(rows) {
     var dirs = [];
 
     rows.forEach(function(row) {
-      console.log(row);
       dirs.push(dbRowToDir(row));
     });
     callback(dirs);
@@ -199,14 +199,30 @@ DiskState.prototype.getFilesInDir = function(dir, callback) {
   callback();
 };
 
-DiskState.prototype.recordStart = function(dir, callback) {
-  console.log("recording the start of", dir);
-  FileDb.storeDirProgress(dir.localId, 0, callback);
+DiskState.prototype.recordStart = function(type, item, callback) {
+  switch(type) {
+    case 'dir':
+      FileDb.storeDirProgress(item.localId, 0, callback);
+      break;
+    case 'file':
+      FileDb.storeFileProgress(item.localFolderId, item.name, 0, callback);
+      break;
+    default:
+      throw new Error('DiskState.recordStart::: Unrecognized type (' + type + ')');
+  }
 };
 
-DiskState.prototype.recordCompletion = function(dir, callback) {
-  console.log("recording the completion of", dir);
-  FileDb.storeDirProgress(dir.localId, 1, callback);
+DiskState.prototype.recordCompletion = function(type, item, callback) {
+  switch(type) {
+    case 'dir':
+      FileDb.storeDirProgress(item.localId, 1, callback);
+      break;
+    case 'file':
+      FileDb.storeFileProgress(item.localFolderId, item.name, 1, callback);
+      break;
+    default:
+      throw new Error('DiskState.recordStart::: Unrecognized type (' + type + ')');
+  }
 };
 
 module.exports = DiskState;
