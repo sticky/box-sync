@@ -3,6 +3,7 @@ var fs = require('fs');
 var FileState = require('./disk-state');
 var StickyFile = require('./file-info');
 var StickyDir = require('./dir-info');
+var Path = require('path');
 
 var FilenameValidator = exports;
 
@@ -202,10 +203,11 @@ FilenameValidator.getBadFiles = function() {
 var usedInoNumes = [];
 
 FilenameValidator.categorizeDirectoryContents = function (path, parentId, options, shouldInit) {
-  var fileNames = fs.readdirSync(path);
-  var dirId = fs.lstatSync(path).ino;
+  var absPath = Path.resolve(path);
+  var fileNames = fs.readdirSync(absPath);
+  var dirId = fs.lstatSync(absPath).ino;
   if (usedInoNumes.indexOf(dirId) >= 0) {
-    throw new Error("wtf?  info taken already:" + dirId + " for " + path);
+    throw new Error("wtf?  info taken already:" + dirId + " for " + absPath);
   } else {
     usedInoNumes.push(dirId);
   }
@@ -215,11 +217,11 @@ FilenameValidator.categorizeDirectoryContents = function (path, parentId, option
   }
 
   if (options.onDirectoryStart) {
-    options.onDirectoryStart(path);
+    options.onDirectoryStart(absPath);
   }
 
   fileNames.forEach(function(fileName) {
-    processDirectoryEntry(fileName, dirId, parentId, path, options);
+    processDirectoryEntry(fileName, dirId, parentId, absPath, options);
   });
 };
 

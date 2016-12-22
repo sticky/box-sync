@@ -35,6 +35,13 @@ function putFolderOnBox(dir, itemComplete, doneCallback) {
 
 function putFileOnBox(file, itemComplete, doneCallback) {
   var self = this;
+  var fullFileName = file.pathStr + '/' + file.name;
+  var fsStat = fs.statSync(fullFileName);
+  if (!fsStat.isFile()) {
+    throw new Error('Uploader.putFileOnBox::: Not a file. (' + fullFileName + ')');
+  }
+
+  console.log("putting file on Box", file);
   if (file.issues.length !== 0) {
     console.log("BAD FILE, SHOULD NOT SYNC", file.localFolderId);
     doneCallback();
@@ -42,21 +49,42 @@ function putFileOnBox(file, itemComplete, doneCallback) {
   }
 
   var info = {dirRemoteId: 0, dirId: file.localFolderId};
+  var preCheckGood = false;
   async.series([
     function(callback) {
-      findRemoteIdForDirId(self.diskState, info, callback);
+      findRemoteIdForDirId(self.rootId, self.diskState, info, callback);
+    },
+    // The API response doesn't happen until after a post is made.  This could mean we don't know we failed until sending a ton of data...
+    function(callback) {
+      // Note: only checking file name for now because it seems like any value of "size" is telling me there's no room.
+      self.client.files.preflightUploadFile(info.remoteId, {'name': file.name}, null, function(err, response) {
+        if (err) {
+          preCheckGood = false;
+          err.statusCode = 'pre-' + err.statusCode;
+        } else {
+          preCheckGood = true;
+        }
+        itemComplete(file, err, response, callback);
+      });
     },
     function(callback) {
-      var stream = fs.createReadStream(file.pathStr + file.name);
-      self.client.files.uploadFile(info.dirRemoteId, file.name, stream, function(err, response) {
-        itemComplete(dir, err, response, callback);
+      var stream;
+      if (!preCheckGood) {
+        callback();
+        return;
+      }
+      stream = fs.createReadStream(fullFileName);
+      // This catches any errors that happen while creating the readable stream (usually invalid names)
+      stream.on('error', function(err) {
+        throw new Error("Stream error: " + err);
+      });
+      self.client.files.uploadFile(info.remoteId, file.name, stream, function(err, response) {
+        itemComplete(file, err, response, callback);
       });
     },
   ], function(err) {
     doneCallback(err);
   });
-
-  doneCallback();
 }
 
 function findDirParentRemote(rootId, diskState, searchInfo, callback) {

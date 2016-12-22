@@ -1,7 +1,9 @@
 'use strict';
 var sqlite3 = require('sqlite3').verbose();
 var async = require('async');
-var db = new sqlite3.Database('files-db.sqlite', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE);
+// Making sure that this database is hidden off wherever this script is, and not popping up wherever we randomly
+// run.  Plus, we don't have table creation queries.
+var db = new sqlite3.Database(__dirname + '/../files-db.sqlite', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE);
 
 var TABLE_DIRS = 'Directories';
 var TABLE_FILES = 'Files';
@@ -13,6 +15,7 @@ var TABLE_DIR_PROGRESS = 'Directory_Progress';
 var TABLE_FILE_PROGRESS = 'Files_Progress';
 var TABLE_DIR_ERROR = 'Directory_Failures';
 var TABLE_FILE_ERROR = 'File_Failures';
+
 var CLASS_ENUM  = {
   'bad': 1,
   'valid': 2,
@@ -26,12 +29,10 @@ function setForeignKeysPragma() {
 }
 
 function truncateEverything(callback) {
-  // There isn't a truncate?  This is close enough.
-  var stmt = 'DELETE FROM ';
   // Order matters!  Foreign key constraints.
   var tables = [
     TABLE_DIR_ERROR,
-    //TABLE_FILE_ERROR,
+    TABLE_FILE_ERROR,
     TABLE_DIR_PROGRESS,
     TABLE_FILE_PROGRESS,
     TABLE_FILE_CLASS,
@@ -41,17 +42,34 @@ function truncateEverything(callback) {
     TABLE_DIRS,
     TABLE_FILES,
   ];
-  setForeignKeysPragma();
+  truncateTables(tables, callback);
+}
 
+function truncateProgress(callback) {
+  // Order matters!  Foreign key constraints in play.
+  var tables = [
+    TABLE_DIR_PROGRESS,
+    TABLE_FILE_PROGRESS,
+  ];
+  truncateTables(tables, callback);
+}
+
+function truncateTables(tables, callback) {
+  // There isn't a truncate?  This is close enough.
+  var stmt = 'DELETE FROM ';
+
+  setForeignKeysPragma();
   db.serialize(function() {
     tables.forEach(function(tableName) {
       db.run(stmt + tableName + ';', [], function(err) {
         if (err) {
           throw new Error("Failed to truncate everything:" + err);
         }
+        console.log("truncated " + tableName);
       });
     });
     db.run('VACUUUM', [], function() {
+      console.log('ACUUM');
       if (callback) {
         callback();
       }
@@ -103,8 +121,6 @@ function storeFile(localFolderId, fullPath, name, onDoneCallback) {
   });
 }
 
-
-
 function loadDirs(classification, onFinish) {
   var stmt = 'SELECT * FROM ' + TABLE_DIRS + ' d INNER JOIN ' + TABLE_DIR_CLASS + ' dc ';
   stmt += 'ON d.Sys_Id_Num = dc.Dir_Id ';
@@ -130,6 +146,9 @@ function loadDirContents(dirId, what, callback) {
     case 'dir':
       loadDirsWithParent(dirId, callback);
       break;
+    case 'file':
+      loadFilesWithParent(dirId, callback);
+      break;
     default:
       throw new Error("loadDirContents: unrecognized type.  (" + what + ")");
       break;
@@ -137,22 +156,50 @@ function loadDirContents(dirId, what, callback) {
 }
 
 function loadDirsWithParent(dirId, callback) {
-  var stmt = 'SELECT * FROM ' + TABLE_DIRS + ' d INNER JOIN ' + TABLE_DIR_CLASS + ' dc ';
-  stmt += 'ON d.Sys_Id_Num = dc.Dir_Id ';
-  stmt += 'INNER JOIN ' + TABLE_DIR_ISSUES + ' di ';
-  stmt += 'ON d.Sys_Id_Num = di.DirId';
+  console.warn("Deprecated: loadDirsWithParent");
+  loadFromParent('dir', dirId, callback);
+}
 
-  stmt += ' WHERE d.Parent_Id = $id'
-  var params = {$id:dirId };
+function loadFilesWithParent(dirId, callback) {
+  console.warn("Deprecated: loadFilesWithParent");
+  loadFromParent('file', dirId, callback);
+}
 
-  //console.log("loadDirsWithParent", dirId);
+function loadFromParent(type, parentId, callback) {
+  var stmt = '';
+  var params = {};
+  var table = TABLE_FILES;
+  var classTable = TABLE_FILE_CLASS;
+  var issuesTable = TABLE_FILE_ISSUES;
+  var itemFolderCol = 'Folder_Id';
+  var whereStr = ' WHERE i.Folder_Id = $id';
+
+  switch(type) {
+    case 'dir':
+      stmt = 'SELECT * FROM ' + TABLE_DIRS + ' d INNER JOIN ' + TABLE_DIR_CLASS + ' dc ';
+      stmt += 'ON d.Sys_Id_Num = dc.Dir_Id ';
+      stmt += 'INNER JOIN ' + TABLE_DIR_ISSUES + ' di ';
+      stmt += 'ON d.Sys_Id_Num = di.DirId';
+      stmt += ' WHERE d.Parent_Id = $dirId';
+      params = {$dirId:parentId };
+      break;
+    case 'file':
+      stmt = 'SELECT * FROM ' + TABLE_FILES + ' f INNER JOIN ' + TABLE_FILE_CLASS + ' fc ';
+      stmt += 'ON f.Folder_Id = fc.Folder_Id AND f.Name = fc.File_Name ';
+      stmt += 'INNER JOIN ' + TABLE_FILE_ISSUES + ' fi ';
+      stmt += 'ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name ';
+      stmt += 'WHERE f.Folder_Id = $dirId';
+      params = {$dirId:parentId };
+      break;
+    default:
+      throw new Error('FilesDb:::loadFromParent()  unrecognized type (' + type + ')');
+
+  }
 
   db.all(stmt, params, function(err, rows) {
     if (err) {
-      console.error("DirId: ", dirId);
-      throw new Error("Db.loadDirs error: " + err);
+      throw new Error("Db.loadFromParent error: " + err);
     }
-    //console.log("done with parent", rows);
     if (callback) {callback(rows);}
   });
 }
@@ -368,6 +415,28 @@ function storeDirectoryProgress(dirId, done, onFinish) {
   });
 }
 
+function storeFileProgress(dirId, fileName, done, onFinish) {
+  var mainTable = TABLE_FILE_PROGRESS;
+  var updateParams = {
+    $id: dirId,
+    $done: done,
+    $name: fileName,
+  };
+  var updateStr = 'INSERT OR REPLACE INTO ';
+  var valuesStr = ' (Folder_Id, Name, Done) VALUES ($id, $name, $done);';
+  setForeignKeysPragma();
+
+  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+    if (err) {
+      throw new Error("Db.store progress error: " + err);
+    }
+    if (onFinish) {
+      console.log("TIME TO STORE SOME FILE PROGRESS!");
+      onFinish();
+    }
+  });
+}
+
 function storeDirectoryFailure(dirId, errNum, errTxt, onFinish) {
   var mainTable = TABLE_DIR_ERROR;
   var updateParams = {
@@ -413,6 +482,10 @@ function storeFileFailure(dirId, fileName, errNum, errTxt, onFinish) {
 
 FilesDb.startOver = function(callback) {
   truncateEverything(callback);
+};
+
+FilesDb.purgeProgress = function(callback) {
+  truncateProgress(callback);
 };
 
 //TODO: Figure out a way to make this more like a transaction, since we have multiple statements to complete.
@@ -497,15 +570,23 @@ FilesDb.loadDirsFrom = function(dirId, doneCallback) {
   loadDirContents(dirId, 'dir', doneCallback);
 };
 
+FilesDb.loadFilesFrom = function(dirId, doneCallback) {
+  loadDirContents(dirId, 'file', doneCallback);
+};
+
 FilesDb.storeDirProgress = function(dir, value, callback) {
   storeDirectoryProgress(dir, value, callback);
-}
+};
+
+FilesDb.storeFileProgress = function(dirId, fileName, value, callback) {
+  storeFileProgress(dirId, fileName, value, callback);
+};
 
 FilesDb.storeDirError = function(dirNum, errorNum, errorText, callback) {
   storeDirectoryFailure(dirNum, errorNum, errorText, callback);
-}
+};
 FilesDb.storeFileError = function(fileFolderId, fileName, errorNum, errorText, callback) {
   storeFileFailure(fileFolderId, fileName, errorNum, errorText, callback);
-}
+};
 
 

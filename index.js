@@ -8,7 +8,7 @@ var async = require("async");
 var BoxUploader = require('./js/box-uploader.js');
 var StickyFileInfo = require('./js/file-info');
 var StickyDirInfo = require('./js/dir-info');
-var FileState = require('./js/disk-state');
+var DiskState = require('./js/disk-state');
 
 var Db = require('./js/files-db');
 
@@ -21,7 +21,7 @@ var FILENAMES = {
 var outputStream = process.stdout;
 var lastStrRendered = '';
 var callbacks = {};
-var diskState = new FileState();
+var diskState = new DiskState();
 var uploader = new BoxUploader(diskState);
 
 callbacks.onDirectoryStarted = function (path) {
@@ -66,13 +66,6 @@ callbacks.onCategorizeComplete = function() {
   console.log("# bytes", stats.bytes);
 }
 
-callbacks.onPreFileComplete = function(error, response) {
-  if (error) {
-    console.log("error status code:", error.statusCode);
-    console.log("error message:", error.message);
-  }
-}
-
 callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
   var remoteId;
   if (response) {
@@ -98,8 +91,8 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
 }
 
 callbacks.onFileComplete = function(file, error, response, completeCallback) {
+  console.log("FILE COMPLETED");
   if (response) {
-    console.log("response id", response.id);
     file.remoteId = response.id;
   }
   async.series([
@@ -111,7 +104,7 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
       }
     },
     function(callback) {
-      diskState.storeDir('valid', file, callback);
+      diskState.storeFile('valid', file, callback);
     }
   ], function(err) {
     if (err) {
@@ -122,7 +115,6 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
 }
 
 callbacks.onDoneLoadingFromDisk = function(fileState) {
-
   if (!program.onlyValidate) {
     createBoxContent(fileState, function() {
       console.log("*** create box content fininished!!!!! ****");
@@ -184,7 +176,7 @@ function uploadDirectory(dir, onDone) {
 }
 
 // File descriptors
-var fds = {badFiles: null, badDirs: null, validFiles: null, processedFiles: null, validDirs: null, processedDirs: null, ignoredFiles: null};
+var fds = {ignoredFiles: null};
 
 var fileBar = new ProgressBar('  uploading [:name] [:bar] :rate/bps :percent :etas', {
   width: 10,
@@ -202,13 +194,15 @@ program
   .arguments('<local-dir> <box-folder>')
   .option('-v, --only-validate', 'Only do the initial validation and categorization of the files.')
   .option('-n, --assume-new', 'Completely ignore results from previous runs.')
-  //.option('-d, --directories', 'Only process directories.(unimplmeneted) '),
-  //.option('-f, --files', 'Only process files (unimplmeneted)')
+  .option('-r, --redo', 'Try to upload all files, ignoring previous upload attempts.')
+  .option('-fix, --fix-errors', 'Try to fix errors encountered on a previous upload attempt.')
   .action(function(source, dest) {
+    console.log("SOURCE", source);
     var freshStart = program.assumeNew ? true : false;
+
     uploader.rootId = dest;
 
-    initializeFds(freshStart, onFdInitalized.bind(this, source, freshStart));
+    initializeData(freshStart, onFdInitalized.bind(this, source, freshStart));
   })
   .parse(process.argv);
 
@@ -258,58 +252,72 @@ function hasContent (filename) {
   return contentPresent;
 }
 
-function initializeFds(fresh, callback) {
-  if (fresh === true) {
-    console.log("treating as fresh start (purging existing state)");
-    FileState.clear(callback);
-    fds.processedFiles = fs.openSync(__dirname + '/' + FILENAMES.processedFiles, 'w');
-    fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'w');
-  } else {
-    console.log("opening with old");
-    fds.processedFiles = fs.openSync(__dirname + '/' + FILENAMES.processedFiles, 'a');
-    fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'r');
-    if (callback) {
-      callback();
-    }
+function initializeData(fresh, callback) {
+  var tasks = [];
+  if (program.redo) {
+    tasks.push(function(callback) {
+      console.log("Redoing uploads.");
+      DiskState.clearProgress(callback);
+    });
   }
+
+  if (fresh === true) {
+    tasks.push(function(callback) {
+      console.log("treating as fresh start (purging all existing state)");
+      fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'w');
+      DiskState.clear(callback);
+    });
+  } else {
+    tasks.push(function(callback) {
+      fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'r');
+      callback();
+    });
+  }
+
+  async.series(tasks, function() {
+    callback();
+  });
 }
 
 function loadPreviousState(doneCallback) {
-  // TODO: Switch this over to async.serial.
   console.log("loading previous");
-  var filesProcessing = 0;
-  filesProcessing += 1;
-  diskState.loadFiles("bad", function() {
-    filesProcessing -= 1;
-    console.log("Done with bads files.", filesProcessing);
-    if (filesProcessing <= 0 && doneCallback) {
+  var tasks = [];
+
+  tasks.push(function(callback) {
+    diskState.loadFiles("bad", function() {
+      callback();
+    });
+  });
+
+  tasks.push(function(callback) {
+    diskState.loadDirs("bad", function() {
+      callback();
+    });
+  });
+
+  tasks.push(function(callback) {
+    diskState.loadDirs("valid", function() {
+      callback();
+    });
+  });
+
+  tasks.push(function(callback) {
+    diskState.loadDirs("valid", function() {
+      callback();
+    });
+  });
+
+  tasks.push(function(callback) {
+    diskState.loadFiles("valid", function() {
+      callback();
+    });
+  });
+
+  async.series(tasks, function() {
+    if (doneCallback) {
       doneCallback(diskState);
     }
-  });
-  filesProcessing += 1;
-  diskState.loadDirs("bad", function() {
-    filesProcessing -= 1;
-    console.log("Done with bads dirs.", filesProcessing);
-    if (filesProcessing <= 0 && doneCallback) {
-      doneCallback(diskState);
-    }
-  });
-  filesProcessing += 1;
-  diskState.loadDirs("valid", function() {
-    filesProcessing -= 1;
-    console.log("Done with good dirs.", filesProcessing);
-    if (filesProcessing <= 0 && doneCallback) {
-      doneCallback(diskState);
-    }
-  });
-  filesProcessing += 1;
-  diskState.loadFiles("valid", function() {
-    filesProcessing -= 1;
-    console.log("Done with good files.", filesProcessing);
-    if (filesProcessing <= 0 && doneCallback) {
-      doneCallback(diskState);
-    }
-  });
+  })
 }
 
 function badDirToString(badDir) {
@@ -387,11 +395,13 @@ function putFoldersOnBox(dirs, doneCallback) {
 }
 
 function putFilesOnBox(files, doneCallback) {
+  console.log("Putting files on box.");
   async.eachSeries(files, function(file, callback) {
-    diskState.recordStart(file, function() {
-      uploader.makeFile('file', file, callbacks.onFileComplete, callback);
+    diskState.recordStart('file', file, function() {
+      uploader.makeFile(file, callbacks.onFileComplete, callback);
     });
   }, function() {
+    console.log("Done with files!");
     doneCallback();
   });
 }

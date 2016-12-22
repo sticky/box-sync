@@ -93,6 +93,10 @@ DiskState.clear = function(callback) {
   FileDb.startOver(callback);
 };
 
+DiskState.clearProgress = function(callback) {
+  FileDb.purgeProgress(callback);
+};
+
 DiskState.prototype.storeDir = function(classification, dirInfo, doneCallback) {
   FileDb.store('dir', classification, dirInfo, doneCallback);
 };
@@ -106,6 +110,9 @@ DiskState.prototype.storeDirError = function(dir, err, response, callback) {
 };
 
 DiskState.prototype.storeFileError = function(file, err, response, callback) {
+  if (!err.statusCode || !err.message) {
+    throw new Error("Unrecognized error format, can't store" + err);
+  }
   FileDb.storeFileError(file.localFolderId, file.name, err.statusCode, err.message, callback);
 };
 
@@ -167,10 +174,11 @@ DiskState.prototype.addRemoteId = function(localDirId, remoteId) {
   folderIdMap[localDirId] = remoteId;
 }
 DiskState.prototype.getRemoteDirId = function(searchInfo, onDoneCallback) {
-  console.log("search info", searchInfo);
+  console.log("search info to get remote id", searchInfo);
   // Hopefully this has been requested before so we can avoid slower DB hits.
   if (folderIdMap[searchInfo.dirId]) {
     searchInfo.remoteId = folderIdMap[searchInfo.dirId];
+    console.log("already had remote id", searchInfo.remoteId);
     onDoneCallback();
   } else {
     FileDb.loadRemoteIdForDir(searchInfo.dirId, function(folderId) {
@@ -195,8 +203,15 @@ DiskState.prototype.getDirsInDir = function(dir, callback) {
 };
 
 DiskState.prototype.getFilesInDir = function(dir, callback) {
-  console.error("getFilesInDir not implemented");
-  callback();
+  var self = this;
+  FileDb.loadFilesFrom(dir.localId, function(rows) {
+    var files = [];
+
+    rows.forEach(function(row) {
+      files.push(dbRowToFile(row));
+    });
+    callback(files);
+  });
 };
 
 DiskState.prototype.recordStart = function(type, item, callback) {
