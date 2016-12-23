@@ -95,7 +95,7 @@ DiskState.clear = function(callback) {
 };
 
 DiskState.clearProgress = function(callback) {
-  async.race([
+  async.parallel([
     function(cb) {
       FileDb.purgeProgress(cb);
     },
@@ -107,7 +107,6 @@ DiskState.clearProgress = function(callback) {
       throw new Error(err);
     }
     callback();
-
   });
 };
 
