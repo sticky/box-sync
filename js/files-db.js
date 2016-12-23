@@ -66,23 +66,32 @@ function truncateErrors(callback) {
 function truncateTables(tables, callback) {
   // There isn't a truncate?  This is close enough.
   var stmt = 'DELETE FROM ';
+  var tasks = [];
 
   setForeignKeysPragma();
-  db.serialize(function() {
-    tables.forEach(function(tableName) {
+  tables.forEach(function(tableName) {
+    tasks.push(function(callback) {
       db.run(stmt + tableName + ';', [], function(err) {
         if (err) {
           throw new Error("Failed to truncate everything:" + err);
         }
         console.log("truncated " + tableName);
+        callback();
       });
     });
-    db.run('VACUUUM', [], function() {
-      console.log('ACUUM');
+  });
+
+  tasks.push(function(callback) {
+    db.run('VACUUM', [], function() {
+      console.log('VACUUM?');
       if (callback) {
         callback();
       }
     });
+  });
+
+  async.series(tasks, function() {
+    callback();
   });
 }
 
