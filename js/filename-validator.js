@@ -74,7 +74,7 @@ function registerDir(type, dirname, path, dirId, parentId, issues, onRegister, c
   var list;
   switch(type) {
     case 'bad':
-      recordIssues(issues);
+      recordIssueStats(issues);
       list = fileState.bad.dirs;
       break;
     case 'good':
@@ -117,11 +117,11 @@ function registerGoodDir(dirname, path, dirId, parentId, issues, onRegister, cal
   registerDir('good', dirname, path, dirId, parentId, issues, onRegister, callback);
 }
 
-function recordIssues(issues) {
-  issues.forEach(recordIssue);
+function recordIssueStats(issues) {
+  issues.forEach(recordIssueStat);
 }
 
-function recordIssue(issue) {
+function recordIssueStat(issue) {
   switch(issue) {
     case ISSUE_SPACES:
       stats.badCounts.spaces += 1;
