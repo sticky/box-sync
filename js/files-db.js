@@ -16,6 +16,9 @@ var TABLE_FILE_PROGRESS = 'Files_Progress';
 var TABLE_DIR_ERROR = 'Directory_Failures';
 var TABLE_FILE_ERROR = 'File_Failures';
 
+var STMT_DIR = db.prepare('INSERT OR REPLACE INTO ' + TABLE_DIRS + '(Sys_Id_Num, Parent_Id, Remote_Id, Full_Path, Name) VALUES ($id, $parentId, $remoteId, $path, $name);');
+var STMT_FILE = db.prepare('INSERT OR REPLACE INTO ' + TABLE_FILES + ' (Folder_Id, Full_Path, Name) VALUES ($folderId, $path, $name);');
+
 var CLASS_ENUM  = {
   'bad': 1,
   'valid': 2,
@@ -96,7 +99,6 @@ function truncateTables(tables, callback) {
 }
 
 function storeDirectory(id, parentId, remoteId, fullPath, name, onDoneCallback) {
-  var mainTable = TABLE_DIRS;
   var updateParams = {
     $id: id,
     $parentId: parentId,
@@ -104,11 +106,9 @@ function storeDirectory(id, parentId, remoteId, fullPath, name, onDoneCallback) 
     $path: fullPath,
     $name: name
   };
-  var updateStr = 'INSERT OR REPLACE INTO ';
-  var valuesStr = ' (Sys_Id_Num, Parent_Id, Remote_Id, Full_Path, Name) VALUES ($id, $parentId, $remoteId, $path, $name);';
   setForeignKeysPragma();
 
-  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+  STMT_DIR.run(updateParams, function(err) {
     if (err) {
       throw new Error("Db.store error: " + err);
     }
@@ -119,17 +119,14 @@ function storeDirectory(id, parentId, remoteId, fullPath, name, onDoneCallback) 
 }
 
 function storeFile(localFolderId, fullPath, name, onDoneCallback) {
-  var mainTable = TABLE_FILES;
   var updateParams = {
     $folderId: localFolderId,
     $path: fullPath,
     $name: name
   };
-  var updateStr = 'INSERT OR REPLACE INTO ';
-  var valuesStr = ' (Folder_Id, Full_Path, Name) VALUES ($folderId, $path, $name);';
   setForeignKeysPragma();
 
-  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+  STMT_FILE.run(updateParams, function(err) {
     if (err) {
       throw new Error("Db.store error: " + err);
     }
@@ -515,6 +512,14 @@ FilesDb.purgeProgress = function(callback) {
 
 FilesDb.purgeErrors = function(callback) {
   truncateErrors(callback);
+};
+
+FilesDb.beginTransaction = function(callback) {
+  db.run('BEGIN TRANSACTION;', [], callback);
+};
+
+FilesDb.endTransaction = function(callback) {
+  db.run('END TRANSACTION;', [], callback);
 };
 
 //TODO: Figure out a way to make this more like a transaction, since we have multiple statements to complete.

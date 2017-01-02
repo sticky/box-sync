@@ -110,6 +110,14 @@ DiskState.clearProgress = function(callback) {
   });
 };
 
+DiskState.prototype.prepareForInserts = function(callback) {
+  FileDb.beginTransaction(callback);
+};
+
+DiskState.prototype.completeInserts = function(callback) {
+  FileDb.endTransaction(callback);
+};
+
 DiskState.prototype.storeDir = function(classification, dirInfo, doneCallback) {
   FileDb.store('dir', classification, dirInfo, doneCallback);
 };

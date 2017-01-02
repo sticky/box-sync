@@ -199,7 +199,11 @@ function onFdInitalized(source, freshStart) {
   /* TODO: Get Filename-Validator module async-ified so that it's safe to run a validate
      followed immediately by the asyncrounous loadPreviousState behavior. */
   if (program.onlyValidate || freshStart) {
-    validator.categorizeDirectoryContents(source, null, options, true, callbacks.onCategorizeComplete);
+    diskState.prepareForInserts(function() {
+      validator.categorizeDirectoryContents(source, null, options, true, function() {
+        diskState.completeInserts(callbacks.onCategorizeComplete);
+      });
+    });
   } else if (!program.onlyValidate) {
     loadPreviousState(callbacks.onDoneLoadingFromDisk);
   } else {
