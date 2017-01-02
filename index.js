@@ -2,9 +2,9 @@
 'use strict';
 var fs = require('fs');
 var program = require('commander');
-var ProgressBar = require('progress');
 var async = require("async");
 
+var UI = require('./js/ConsoleOutput.js');
 var BoxUploader = require('./js/box-uploader.js');
 var StickyFileInfo = require('./js/file-info');
 var StickyDirInfo = require('./js/dir-info');
@@ -18,24 +18,21 @@ var FILENAMES = {
   ignoredFiles: 'files/Ignored.txt',
 };
 
-var outputStream = process.stdout;
-var lastStrRendered = '';
 var callbacks = {};
 var diskState = new DiskState();
 var uploader = new BoxUploader(diskState);
 
 callbacks.onDirectoryStarted = function (path) {
-  var progressStr = formatPathProgress(path, outputStream);
-  if (lastStrRendered !== progressStr) {
-    outputStream.cursorTo(0);
-    outputStream.write(progressStr);
-    outputStream.clearLine(1);
-    lastStrRendered = progressStr;
-  }
+  var cols = UI.getStrWidth();
+  var progressStr = formatPathProgress("Reading", path, cols);
+  UI.displayDirProgress(progressStr);
 }
 
 callbacks.onBadDirectory = function (dirInfo, callback) {
   diskState.storeDir('bad', dirInfo, callback);
+  var cols = UI.getStrWidth();
+  var progressStr = formatPathProgress("Storing dir", dirInfo.pathStr, cols);
+  UI.displayDirProgress(progressStr);
 }
 
 callbacks.onBadFile = function (fileInfo, callback) {
@@ -43,6 +40,9 @@ callbacks.onBadFile = function (fileInfo, callback) {
 }
 callbacks.onValidDir = function (dirInfo, callback) {
   diskState.storeDir('valid', dirInfo, callback);
+  var cols = UI.getStrWidth();
+  var progressStr = formatPathProgress("Storing dir", dirInfo.pathStr, cols);
+  UI.displayDirProgress(progressStr);
 }
 
 callbacks.onValidFile = function (fileInfo, callback) {
@@ -168,17 +168,6 @@ function uploadDirectory(dir, onDone) {
 
 // File descriptors
 var fds = {ignoredFiles: null};
-
-var fileBar = new ProgressBar('  uploading [:name] [:bar] :rate/bps :percent :etas', {
-  width: 10,
-  clear: true,
-  total: 0
-});
-var overallBar = new ProgressBar('  progress [:bar] :rate/bps :percent :etas', {
-  width: 10,
-  clear: true,
-  total: 0
-});
 
 program
   .version('0.0.1')
@@ -361,15 +350,13 @@ function callOutProblemChars(str) {
   return str;
 }
 
-function formatPathProgress(path, stream) {
-  var label = "Reading ";
+function formatPathProgress(label, path, width) {
+  var label = label + " ";
   var pathStart;
   var pathEnd;
 
-  outputStream.columns;
-
-  pathStart = path.substring(0, outputStream.columns / 3);
-  pathEnd = path.substring(path.length - outputStream.columns / 3, path.length);
+  pathStart = path.substring(0, width / 3);
+  pathEnd = path.substring(path.length - width / 3, path.length);
 
   return label + pathStart + '...' + pathEnd;
 }
