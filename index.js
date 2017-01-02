@@ -34,19 +34,19 @@ callbacks.onDirectoryStarted = function (path) {
   }
 }
 
-callbacks.onBadDirectory = function (dirInfo) {
-  diskState.storeDir('bad', dirInfo);
+callbacks.onBadDirectory = function (dirInfo, callback) {
+  diskState.storeDir('bad', dirInfo, callback);
 }
 
-callbacks.onBadFile = function (fileInfo) {
-  diskState.storeFile('bad', fileInfo);
+callbacks.onBadFile = function (fileInfo, callback) {
+  diskState.storeFile('bad', fileInfo, callback);
 }
-callbacks.onValidDir = function (dirInfo) {
-  diskState.storeDir('valid', dirInfo);
+callbacks.onValidDir = function (dirInfo, callback) {
+  diskState.storeDir('valid', dirInfo, callback);
 }
 
-callbacks.onValidFile = function (fileInfo) {
-  diskState.storeFile('valid', fileInfo);
+callbacks.onValidFile = function (fileInfo, callback) {
+  diskState.storeFile('valid', fileInfo, callback);
 }
 
 callbacks.onIgnoredFile = function(path, file) {
@@ -56,14 +56,7 @@ callbacks.onIgnoredFile = function(path, file) {
 }
 
 callbacks.onCategorizeComplete = function() {
-  outputStream.write('\n');
   var stats = validator.getStats();
-  console.log("# valid", stats.validCounts.files);
-  console.log("# valid dirs", stats.validCounts.dirs);
-  console.log("# bad file lengths", stats.badCounts.long);
-  console.log("# bad file chars", stats.badCounts.unprintable);
-  console.log("# bad whitespace", stats.badCounts.spaces);
-  console.log("# bytes", stats.bytes);
 }
 
 callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
@@ -217,8 +210,7 @@ function onFdInitalized(source, freshStart) {
   /* TODO: Get Filename-Validator module async-ified so that it's safe to run a validate
      followed immediately by the asyncrounous loadPreviousState behavior. */
   if (program.onlyValidate || freshStart) {
-    validator.categorizeDirectoryContents(source, null, options, true);
-    callbacks.onCategorizeComplete();
+    validator.categorizeDirectoryContents(source, null, options, true, callbacks.onCategorizeComplete);
   } else if (!program.onlyValidate) {
     loadPreviousState(callbacks.onDoneLoadingFromDisk);
   } else {
