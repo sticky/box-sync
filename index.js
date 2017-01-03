@@ -19,32 +19,91 @@ var FILENAMES = {
 var callbacks = {};
 var diskState = new DiskState();
 var uploader = new BoxUploader(diskState);
+var times = {
+  start: process.hrtime(),
+  elapsed: 0
+}
+
+var counts = {
+  validDirs: 0,
+  validFiles: 0,
+  invalidDirs: 0,
+  invalidFiles: 0,
+  read: 0,
+  stored: 0,
+  bytes: 0, // Not implmented yet.
+}
+
+var updateUiTimer;
 
 callbacks.onDirectoryStarted = function (path) {
   var cols = UI.getStrWidth();
-  var progressStr = formatPathProgress("Reading", path, cols);
-  UI.displayDirProgress(progressStr);
+  var progressStr = formatPathProgress("", path, cols);
+  UI.setReading(progressStr);
 }
 
 callbacks.onBadDirectory = function (dirInfo, callback) {
-  diskState.storeDir('bad', dirInfo, callback);
   var cols = UI.getStrWidth();
-  var progressStr = formatPathProgress("Storing dir", dirInfo.pathStr, cols);
-  UI.displayDirProgress(progressStr);
+  counts.read += 1;
+  diskState.storeDir('bad', dirInfo, function(err) {
+    if (err) {
+      throw err;
+    }
+    counts.stored += 1;
+    UI.setStoring(formatPathProgress("", dirInfo.pathStr + "/" + dirInfo.name, cols));
+    UI.setStats({savedCt: counts.stored});
+    callback();
+  });
+  var cols = UI.getStrWidth();
+  counts.invalidDirs += 1;
+  UI.setStats({iFiles: counts.invalidDirs, time: process.hrtime(times.start)[0], totalCt: counts.read});
 }
 
 callbacks.onBadFile = function (fileInfo, callback) {
-  diskState.storeFile('bad', fileInfo, callback);
+  var cols = UI.getStrWidth();
+  counts.read += 1;
+  diskState.storeFile('bad', fileInfo, function(err) {
+    if (err) {
+      throw err;
+    }
+    counts.stored += 1;
+    UI.setStoring(formatPathProgress("", fileInfo.pathStr + "/" + fileInfo.name, cols));
+    UI.setStats({savedCt: counts.stored});
+    callback();
+  });
+  counts.invalidFiles += 1;
+  UI.setStats({iDirs: counts.invalidFiles, time: process.hrtime(times.start)[0], totalCt: counts.read});
 }
 callbacks.onValidDir = function (dirInfo, callback) {
-  diskState.storeDir('valid', dirInfo, callback);
   var cols = UI.getStrWidth();
-  var progressStr = formatPathProgress("Storing dir", dirInfo.pathStr, cols);
-  UI.displayDirProgress(progressStr);
+  counts.read += 1;
+  diskState.storeDir('valid', dirInfo, function(err) {
+    if (err) {
+      throw err;
+    }
+    counts.stored += 1;
+    UI.setStoring(formatPathProgress("", dirInfo.pathStr + "/" + dirInfo.name, cols));
+    UI.setStats({savedCt: counts.stored});
+    callback();
+  });
+  counts.validDirs += 1;
+  UI.setStats({vDirs: counts.validDirs, time: process.hrtime(times.start)[0], totalCt: counts.read});
 }
 
 callbacks.onValidFile = function (fileInfo, callback) {
-  diskState.storeFile('valid', fileInfo, callback);
+  var cols = UI.getStrWidth();
+  counts.read += 1;
+  diskState.storeFile('valid', fileInfo, function(err) {
+    if (err) {
+      throw err;
+    }
+    counts.stored += 1;
+    UI.setStoring(formatPathProgress("", fileInfo.pathStr + "/" + fileInfo.name, cols));
+    UI.setStats({savedCt: counts.stored});
+    callback();
+  });
+  counts.validFiles += 1;
+  UI.setStats({vFiles: counts.validFiles, time: process.hrtime(times.start)[0], totalCt: counts.read});
 }
 
 callbacks.onIgnoredFile = function(path, file) {
@@ -55,6 +114,8 @@ callbacks.onIgnoredFile = function(path, file) {
 
 callbacks.onCategorizeComplete = function() {
   var stats = validator.getStats();
+  clearTimeout(updateUiTimer);
+  console.log("Time elapsed (s):",  process.hrtime(times.start)[0]);
 }
 
 callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
@@ -197,8 +258,13 @@ function onFdInitalized(source, freshStart) {
   /* TODO: Get Filename-Validator module async-ified so that it's safe to run a validate
      followed immediately by the asyncrounous loadPreviousState behavior. */
   if (program.onlyValidate || freshStart) {
+    updateUiTimer = setTimeout(function() {
+      UI.setStats({time: process.hrtime(times.start)[0]});
+    }, 1000);
+
     diskState.prepareForInserts(function() {
       validator.categorizeDirectoryContents(source, null, options, true, function() {
+        console.log("Finishing writes to database...");
         diskState.completeInserts(callbacks.onCategorizeComplete);
       });
     });
