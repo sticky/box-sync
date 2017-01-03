@@ -1,5 +1,5 @@
 'use strict';
-var sqlite3 = require('sqlite3').verbose();
+var sqlite3 = require('sqlite3'); //.verbose();
 var async = require('async');
 // Making sure that this database is hidden off wherever this script is, and not popping up wherever we randomly
 // run.  Plus, we don't have table creation queries.
@@ -16,8 +16,9 @@ var TABLE_FILE_PROGRESS = 'Files_Progress';
 var TABLE_DIR_ERROR = 'Directory_Failures';
 var TABLE_FILE_ERROR = 'File_Failures';
 
-var STMT_DIR = db.prepare('INSERT OR REPLACE INTO ' + TABLE_DIRS + '(Sys_Id_Num, Parent_Id, Remote_Id, Full_Path, Name) VALUES ($id, $parentId, $remoteId, $path, $name);');
-var STMT_FILE = db.prepare('INSERT OR REPLACE INTO ' + TABLE_FILES + ' (Folder_Id, Full_Path, Name) VALUES ($folderId, $path, $name);');
+var stmtDir;
+var stmtFile;
+var queue = async.queue(storeWorker, 100); // This might need to be fiddled with.
 
 var CLASS_ENUM  = {
   'bad': 1,
@@ -27,8 +28,38 @@ var CLASS_ENUM  = {
 
 var FilesDb = exports;
 
-function setForeignKeysPragma() {
-  db.run('PRAGMA foreign_keys = true;');
+function setForeignKeysPragma(callback) {
+  db.run('PRAGMA foreign_keys = true;', callback);
+}
+function prepareStatements(callback) {
+  var needTofinal = false;
+  if (stmtDir || stmtFile) {
+    finalizeStatements(function() {
+      finishPreparing(callback);
+    });
+  } else {
+    finishPreparing(callback);
+  }
+}
+
+function finishPreparing(callback) {
+  stmtDir = db.prepare('INSERT OR REPLACE INTO ' + TABLE_DIRS + '(Sys_Id_Num, Parent_Id, Remote_Id, Full_Path, Name) VALUES ($id, $parentId, $remoteId, $path, $name);',
+  [], function() {
+    stmtFile = db.prepare('INSERT OR REPLACE INTO ' + TABLE_FILES + ' (Folder_Id, Full_Path, Name) VALUES ($folderId, $path, $name);', [], callback);
+  });
+}
+
+function finalizeStatements(callback) {
+  if (!stmtFile || !stmtDir) {
+    throw new Error("One or more prepared statements do not exist and cannot be finalized.");
+  }
+  stmtFile.finalize(function() {
+    stmtFile = null;
+    stmtDir.finalize(function() {
+      stmtDir = null;
+      callback();
+    });
+  });
 }
 
 function truncateEverything(callback) {
@@ -71,30 +102,30 @@ function truncateTables(tables, callback) {
   var stmt = 'DELETE FROM ';
   var tasks = [];
 
-  setForeignKeysPragma();
-  tables.forEach(function(tableName) {
-    tasks.push(function(callback) {
-      db.run(stmt + tableName + ';', [], function(err) {
-        if (err) {
-          throw new Error("Failed to truncate everything:" + err);
-        }
-        console.log("truncated " + tableName);
-        callback();
+  setForeignKeysPragma(function(err) {
+    tables.forEach(function(tableName) {
+      tasks.push(function(callback) {
+        db.run(stmt + tableName + ';', [], function(err) {
+          if (err) {
+            throw new Error("Failed to truncate everything:" + err);
+          }
+          callback();
+        });
       });
     });
-  });
 
-  tasks.push(function(callback) {
-    db.run('VACUUM', [], function() {
-      console.log('VACUUM?');
-      if (callback) {
-        callback();
-      }
+    tasks.push(function(callback) {
+      db.run('VACUUM', [], function() {
+        console.log('VACUUM?');
+        if (callback) {
+          callback();
+        }
+      });
     });
-  });
 
-  async.series(tasks, function() {
-    callback();
+    async.series(tasks, function() {
+      callback();
+    });
   });
 }
 
@@ -108,11 +139,12 @@ function storeDirectory(id, parentId, remoteId, fullPath, name, onDoneCallback) 
   };
   setForeignKeysPragma();
 
-  STMT_DIR.run(updateParams, function(err) {
+  stmtDir.run(updateParams, function(err) {
     if (err) {
       throw new Error("Db.store error: " + err);
     }
     if (onDoneCallback) {
+
       onDoneCallback();
     }
   });
@@ -126,7 +158,7 @@ function storeFile(localFolderId, fullPath, name, onDoneCallback) {
   };
   setForeignKeysPragma();
 
-  STMT_FILE.run(updateParams, function(err) {
+  stmtFile.run(updateParams, function(err) {
     if (err) {
       throw new Error("Db.store error: " + err);
     }
@@ -236,7 +268,6 @@ function loadSingleDir(dirId, onFinish) {
 
   db.get(stmt, [], function(err, row) {
     if (err) {
-      console.log("info searching", dirId);
       throw new Error("Db.loadSingleDir error: " + err);
     }
     if (onFinish) {
@@ -384,19 +415,16 @@ function loadIncompleteProgress(type, onFinish) {
 
   async.series([
     function(callback) {
-      //console.log("first step");
       db.get(countQuery, function(err, row) {
         if (err) {
           throw new Error("Db.loadIncompleteProgress error: " + err);
         }
 
-        //console.log("count row?", row['COUNT(*)']);
         totalProgressRows = row['COUNT(*)'];
         callback();
       });
     },
     function(callback) {
-      //console.log("next step");
       db.get(query + where, function(err, row) {
         if (err) {
           throw new Error("Db.loadIncompleteProgress error: " + err);
@@ -406,12 +434,10 @@ function loadIncompleteProgress(type, onFinish) {
       });
     },
   ], function(err) {
-    //console.log("done loading incomplete", err);
     if (totalProgressRows == 0) {
       result = false;
     }
     if (onFinish) {
-      //console.log("calling finish", result);
       onFinish.call(this, result);
     }
   });
@@ -453,7 +479,6 @@ function storeFileProgress(dirId, fileName, done, onFinish) {
       throw new Error("Db.store progress error: " + err);
     }
     if (onFinish) {
-      console.log("TIME TO STORE SOME FILE PROGRESS!");
       onFinish();
     }
   });
@@ -515,15 +540,21 @@ FilesDb.purgeErrors = function(callback) {
 };
 
 FilesDb.beginTransaction = function(callback) {
-  db.run('BEGIN TRANSACTION;', [], callback);
+  db.run('BEGIN TRANSACTION;', [], function() {
+    // Prepared statements inherit the transaction context; if they're prepared before a transaction, they don't gain
+    // the (at least performance) benefits of the transaction.
+    prepareStatements(callback);
+  });
 };
 
 FilesDb.endTransaction = function(callback) {
   db.run('END TRANSACTION;', [], callback);
 };
 
-//TODO: Figure out a way to make this more like a transaction, since we have multiple statements to complete.
-FilesDb.store = function(type, classification, itemInfo, doneCallback) {
+function storeWorker(properties, doneCallback) {
+  var type = properties.type;
+  var classification = properties.classification;
+  var itemInfo = properties.itemInfo;
   var mainTable;
   var classTable;
   var updateParams = [];
@@ -541,8 +572,6 @@ FilesDb.store = function(type, classification, itemInfo, doneCallback) {
           storeDirClass(classification, itemInfo.localId, callback);
         }
       ], function(err) {
-        //console.log(err);
-        //console.log("DONE DOING THE STORAGE '%s'", doneCallback);
         if (doneCallback) {doneCallback()};
       });
       break;
@@ -558,14 +587,17 @@ FilesDb.store = function(type, classification, itemInfo, doneCallback) {
           storeFileClass(classification, itemInfo.localFolderId, itemInfo.name, callback);
         }
       ], function(err) {
-        //console.log(err);
-        //console.log("DONE DOING THE STORAGE '%s'", doneCallback);
         if (doneCallback) {doneCallback()};
       });
       break;
     default:
       throw Error("FilesDb.store::: Invalid type.");
   }
+}
+
+//TODO: Figure out a way to make this more like a transaction, since we have multiple statements to complete.
+FilesDb.store = function(type, classification, itemInfo, doneCallback) {
+  queue.push({type: type, classification: classification, itemInfo: itemInfo}, doneCallback);
 };
 
 FilesDb.loadSingleDirProgress = function(callback) {
@@ -623,4 +655,15 @@ FilesDb.storeFileError = function(fileFolderId, fileName, errorNum, errorText, c
   storeFileFailure(fileFolderId, fileName, errorNum, errorText, callback);
 };
 
-
+process.on('SIGINT', function() {
+  console.warn("Caught interrupt signal, trying to close database.");
+  if (stmtDir || stmtFile) {
+    stmtDir.finalize(function() {
+      stmtFile.finalize(function() {
+        db.close();
+      });
+    });
+  } else {
+    db.close();
+  }
+});
