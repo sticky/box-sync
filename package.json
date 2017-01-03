@@ -10,6 +10,7 @@
     "box-sync": "./index.js"
   },
   "scripts": {
+    "box-sync-mem": "node --max-old-space-size=8192 index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
