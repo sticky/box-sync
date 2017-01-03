@@ -1,8 +1,14 @@
 var ProgressBar = require('progress');
 
+var RENDER_INTERVAL_MS = 1000;
+
 var ConsoleOutput = module.exports;
 
 var outputStream = process.stdout;
+
+var dirty = true;
+var renderTimer;
+var displayTime = 0;
 
 var validStats = {
   time: 0,
@@ -32,7 +38,18 @@ var overallBar = new ProgressBar('  progress [:bar] :rate/bps :percent :etas', {
   total: 0
 });
 
+function setupRenderInterval() {
+
+  renderTimer = setInterval(renderValidation, 1000);
+}
+
 function renderValidation() {
+  if (!dirty) {
+    return;
+  }
+  if (Date.now() - displayTime < RENDER_INTERVAL_MS) {
+    return;
+  }
   outputStream.write('\x1Bc');
 
   outputStream.write('Valid Files: ' + validStats.vFiles + '\n');
@@ -47,23 +64,44 @@ function renderValidation() {
   outputStream.write('Saved... (#' + validStats.savedCt + '/' + validStats.totalCt + '): ' + validStats.storingStr + '\n');
 
   outputStream.write('Duration: ' + validStats.time + '\n');
+
+  dirty = false;
+  displayTime = Date.now();
 }
+
+ConsoleOutput.startDisplay = function(displayName) {
+  switch(displayName) {
+    case 'validate':
+      renderValidation();
+      displayTime = Date.now();
+      setupRenderInterval();
+      break;
+    default:
+      throw new Error("Unrecognized display request.");
+  }
+};
+
+ConsoleOutput.stopDisplay = function() {
+  clearInterval(renderTimer);
+};
 
 ConsoleOutput.setReading = function (str) {
   if (str === validStats.readingStr) {
     return;
   }
   validStats.readingStr = str;
+  dirty = true;
   renderValidation();
-}
+};
 
 ConsoleOutput.setStoring = function (str) {
   if (str === validStats.storingStr) {
     return;
   }
   validStats.storingStr = str;
+  dirty = true;
   renderValidation();
-}
+};
 
 ConsoleOutput.setStats = function (stats) {
   var needsRender = false;
@@ -74,13 +112,14 @@ ConsoleOutput.setStats = function (stats) {
     }
   }
   if (needsRender) {
+    dirty = true;
     renderValidation();
   }
-}
+};
 
 ConsoleOutput.getStrWidth = function() {
   return outputStream.columns;
-}
+};
 
 
 

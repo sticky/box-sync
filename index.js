@@ -115,6 +115,7 @@ callbacks.onIgnoredFile = function(path, file) {
 callbacks.onCategorizeComplete = function() {
   var stats = validator.getStats();
   clearTimeout(updateUiTimer);
+  UI.stopDisplay();
   console.log("Time elapsed (s):",  process.hrtime(times.start)[0]);
 }
 
@@ -258,7 +259,8 @@ function onFdInitalized(source, freshStart) {
   /* TODO: Get Filename-Validator module async-ified so that it's safe to run a validate
      followed immediately by the asyncrounous loadPreviousState behavior. */
   if (program.onlyValidate || freshStart) {
-    updateUiTimer = setTimeout(function() {
+    UI.startDisplay('validate');
+    updateUiTimer = setInterval(function() {
       UI.setStats({time: process.hrtime(times.start)[0]});
     }, 1000);
 
