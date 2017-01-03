@@ -7,6 +7,7 @@ var ConsoleOutput = module.exports;
 var outputStream = process.stdout;
 
 var dirty = true;
+var active = false;
 var renderTimer;
 var displayTime = 0;
 
@@ -44,7 +45,7 @@ function setupRenderInterval() {
 }
 
 function renderValidation() {
-  if (!dirty) {
+  if (!dirty || !active) {
     return;
   }
   if (Date.now() - displayTime < RENDER_INTERVAL_MS) {
@@ -72,6 +73,7 @@ function renderValidation() {
 ConsoleOutput.startDisplay = function(displayName) {
   switch(displayName) {
     case 'validate':
+      active = true;
       renderValidation();
       displayTime = Date.now();
       setupRenderInterval();
@@ -83,6 +85,7 @@ ConsoleOutput.startDisplay = function(displayName) {
 
 ConsoleOutput.stopDisplay = function() {
   clearInterval(renderTimer);
+  active = false;
 };
 
 ConsoleOutput.setReading = function (str) {
@@ -121,5 +124,9 @@ ConsoleOutput.getStrWidth = function() {
   return outputStream.columns;
 };
 
+process.on('SIGINT', function() {
+  console.warn("Caught interrupt signal, trying to stop UI.");
+  ConsoleOutput.stopDisplay();
+});
 
 
