@@ -103,11 +103,7 @@ function registerGoodFile(filename, path, folderId, issues, onRegister, callback
   stats.validCounts.files += 1;
   fileState.valid.files.push(file);
   if (onRegister) {
-    async.series(function(cb) {
-      onRegister(file, cb);
-    }, function(err) {
-      callback();
-    });
+      onRegister(file, callback);
   } else {
     callback();
   }
@@ -164,7 +160,7 @@ function processDirectoryEntry(fileName, dirId, parentId, dirPathStr, options, c
       finishProcessingEntry(stat, currentId, parentId, fileName, dirPathStr, dirId, problems, options, callback);
     });
   } else {
-    callback();
+    finishProcessingEntry(stat, currentId, parentId, fileName, dirPathStr, dirId, problems, options, callback);
   }
 }
 

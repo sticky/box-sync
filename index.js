@@ -10,8 +10,6 @@ var StickyFileInfo = require('./js/file-info');
 var StickyDirInfo = require('./js/dir-info');
 var DiskState = require('./js/disk-state');
 
-var Db = require('./js/files-db');
-
 var validator = require('./js/filename-validator');
 
 var FILENAMES = {
