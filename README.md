@@ -17,3 +17,10 @@ If we publish this somewhere, you can also use
 
 # Development Notes
 Use `npm link` to make dev easier.
+
+# Known Issues
+
+* If your system goes to sleep, this program will probably explode.
+* NPM has a sorta small default memory limit for the potential amount of information it might be trying to keep track of.
+  If you run into this problem (most likely place is during the validation step), you are going to need to use node directly instead of the handy `box-sync` command.
+    * EG: `node --max_old_space_size=4096 index.js -- [flags] <folder> <BoxFolderId>`

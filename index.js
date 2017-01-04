@@ -9,6 +9,7 @@ var BoxUploader = require('./js/box-uploader.js');
 var StickyFileInfo = require('./js/file-info');
 var StickyDirInfo = require('./js/dir-info');
 var DiskState = require('./js/disk-state');
+var ErrorFixer = require('./js/error-fixer');
 
 var validator = require('./js/filename-validator');
 
@@ -19,6 +20,9 @@ var FILENAMES = {
 var callbacks = {};
 var diskState = new DiskState();
 var uploader = new BoxUploader(diskState);
+ErrorFixer.setBoxUploader(uploader);
+ErrorFixer.setStorage(diskState);
+
 var times = {
   start: process.hrtime(),
   elapsed: 0
@@ -127,7 +131,7 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
   async.series([
     function(callback) {
       if (error) {
-        diskState.storeDirError(dir, error, response, callback);
+        callbacks.onFolderError(dir, error, response, completeCallback);
       } else {
         callback();
       }
@@ -143,20 +147,39 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
   });
 }
 
-callbacks.onFileComplete = function(file, error, response, completeCallback) {
-  if (response) {
-    file.remoteId = response.id;
+callbacks.onFolderError = function(dir, error, response, completeCallback) {
+  var info = {};
+  if (!error.statusCode) {
+    error.statusCode = 'SYS';
   }
+  if (ErrorFixer.canFixError('dir', error.statusCode, error.message)) {
+    info.error = error;
+    info.dir = dir;
+    ErrorFixer.fixError('dir', info, error.statusCode, function(err, remoteId) {
+      if (err) {
+        throw err;
+      }
+      completeCallback();
+    });
+  } else {
+    diskState.storeDirError(dir, error, response, completeCallback);
+  }
+};
+
+callbacks.onFileComplete = function(file, error, response, completeCallback) {
   async.series([
     function(callback) {
       if (error) {
+        if (!error.statusCode) {
+          error.statusCode = 'SYS';
+        }
         diskState.storeFileError(file, error, response, callback);
       } else {
         callback();
       }
     },
     function(callback) {
-      diskState.storeFile('valid', file, callback);
+      diskState.recordCompletion('file', file, callback);
     }
   ], function(err) {
     if (err) {
@@ -220,6 +243,7 @@ function uploadDirectory(dir, onDone) {
     }
 
     if (realDir) {
+      console.log("trying to record completion");
       diskState.recordCompletion('dir', dir);
     }
     onDone();
@@ -241,6 +265,7 @@ program
     var freshStart = program.assumeNew ? true : false;
 
     uploader.rootId = dest;
+    ErrorFixer.setRootId(dest);
 
     initializeData(freshStart, onFdInitalized.bind(this, source, freshStart));
   })

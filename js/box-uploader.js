@@ -75,6 +75,11 @@ function putFileOnBox(file, itemComplete, doneCallback) {
   });
 }
 
+function getBoxFolderContents(boxId, callback) {
+  var qs = null;
+  this.client.folders.getItems(boxId, qs, callback);
+}
+
 function findDirParentRemote(rootId, diskState, searchInfo, callback) {
   // Are we at the bottom level of our folder tree?
   if (!searchInfo.dirId || searchInfo.dirId === 'noparent') {
@@ -110,9 +115,12 @@ function BoxUploader(diskState, rootRemoteId) {
 
 BoxUploader.prototype.makeDir = function(dir, onFolderComplete, callback) {
   putFolderOnBox.call(this, dir, onFolderComplete, callback);
-}
+};
 BoxUploader.prototype.makeFile = function(file, onFileComplete, callback) {
   putFileOnBox.call(this, file, onFileComplete, callback);
-}
+};
+BoxUploader.prototype.getDirContents = function(boxId, callback) {
+  getBoxFolderContents.call(this, boxId, callback);
+};
 
 module.exports = BoxUploader;

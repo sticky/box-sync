@@ -26,7 +26,7 @@ var CLASS_ENUM  = {
   'failed': 3,
 }
 
-var FilesDb = exports;
+var FilesDb = module.exports;
 
 function setForeignKeysPragma(callback) {
   db.run('PRAGMA foreign_keys = true;', callback);
@@ -264,9 +264,9 @@ function loadSingleDir(dirId, onFinish) {
   stmt += 'INNER JOIN ' + TABLE_DIR_ISSUES + ' di ';
   stmt += 'ON d.Sys_Id_Num = di.DirId';
 
-  stmt += ' WHERE d.Sys_Id_Num = ' + dirId;
+  stmt += ' WHERE d.Sys_Id_Num = $dirId';
 
-  db.get(stmt, [], function(err, row) {
+  db.get(stmt, {$dirId: dirId}, function(err, row) {
     if (err) {
       throw new Error("Db.loadSingleDir error: " + err);
     }
@@ -519,7 +519,7 @@ function storeFileFailure(dirId, fileName, errNum, errTxt, onFinish) {
 
   db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
     if (err) {
-      throw new Error("Db.store failure error: " + err);
+      throw new Error("Db.store failure error: [" + updateStr + mainTable + valuesStr + "]" + err);
     }
     if (onFinish) {
       onFinish();
@@ -559,6 +559,7 @@ function storeWorker(properties, doneCallback) {
   var classTable;
   var updateParams = [];
   var tasks = 0;
+
   switch (type) {
     case 'dir':
       async.series([
@@ -597,7 +598,13 @@ function storeWorker(properties, doneCallback) {
 
 //TODO: Figure out a way to make this more like a transaction, since we have multiple statements to complete.
 FilesDb.store = function(type, classification, itemInfo, doneCallback) {
-  queue.push({type: type, classification: classification, itemInfo: itemInfo}, doneCallback);
+  if (!stmtDir || stmtFile) {
+    prepareStatements(function(err) {
+      queue.push({type: type, classification: classification, itemInfo: itemInfo}, doneCallback);
+    });
+  } else {
+    queue.push({type: type, classification: classification, itemInfo: itemInfo}, doneCallback);
+  }
 };
 
 FilesDb.loadSingleDirProgress = function(callback) {
