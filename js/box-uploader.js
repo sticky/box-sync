@@ -5,8 +5,14 @@ var BoxSDK = require('box-node-sdk');
 var async = require('async');
 
 var clientID = require('../files/tokens.env').clientID;
-var developerToken = require('../files/tokens.env').developerToken;
 var clientSecret = require('../files/tokens.env').clientSecret;
+
+var tokenInfo = {
+  accessToken: require('../files/tokens.env').accessToken,
+  refreshToken: require('../files/tokens.env').refreshToken,
+  accessTokenTTLMS: require('../files/tokens.env').tokenExpires,
+  acquiredAtMS: require('../files/tokens.env').tokenRequestedAt,
+}
 
 function putFolderOnBox(dir, itemComplete, doneCallback) {
   // We have a directory, but now we need to figure out the Box.com ID we
@@ -108,7 +114,7 @@ function BoxUploader(diskState, rootRemoteId) {
     clientSecret: clientSecret
   });
 
-  this.client = this.sdk.getBasicClient(developerToken);
+  this.client = this.sdk.getPersistentClient(tokenInfo);
   this.diskState = diskState;
   this.rootId = rootRemoteId;
 }
