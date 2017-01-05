@@ -228,12 +228,6 @@ FilenameValidator.init = function() {
 };
 
 FilenameValidator.getStats = function() {
-  console.log("# valid", stats.validCounts.files);
-  console.log("# valid dirs", stats.validCounts.dirs);
-  console.log("# bad file lengths", stats.badCounts.long);
-  console.log("# bad file chars", stats.badCounts.unprintable);
-  console.log("# bad whitespace", stats.badCounts.spaces);
-  console.log("# bytes", stats.bytes);
   return stats;
 };
 

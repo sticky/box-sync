@@ -7,6 +7,7 @@ var db = new sqlite3.Database(__dirname + '/../files-db.sqlite', sqlite3.OPEN_RE
 
 var TABLE_DIRS = 'Directories';
 var TABLE_FILES = 'Files';
+var TABLE_VARS = 'Misc_Vars';
 var TABLE_DIR_ISSUES = 'Directory_Issues';
 var TABLE_DIR_CLASS = 'Directory_Class';
 var TABLE_FILE_ISSUES = 'File_Issues';
@@ -527,6 +528,38 @@ function storeFileFailure(dirId, fileName, errNum, errTxt, onFinish) {
   });
 }
 
+function storeVar(name, value, onFinish) {
+  var updateParams = {
+    $name: name,
+    $val: value,
+  };
+  var updateStr = 'INSERT OR REPLACE INTO ';
+  var valuesStr = ' (Name, Value) VALUES ($name, $val);';
+  setForeignKeysPragma();
+
+  db.run(updateStr + TABLE_VARS + valuesStr, updateParams, function(err) {
+    if (err) {
+      throw new Error("Db.store vars error: [" + updateStr + TABLE_VARS + valuesStr + "]" + err);
+    }
+    if (onFinish) {
+      onFinish();
+    }
+  });
+}
+
+function loadVars(onFinish) {
+  var query = 'SELECT * FROM ' + TABLE_VARS;
+
+  db.all(query, [], function(err, rows) {
+    if (err) {
+      throw new Error("Db.loadVars error: " + err);
+    }
+    if (onFinish) {
+      onFinish.call(this, rows);
+    }
+  });
+}
+
 FilesDb.startOver = function(callback) {
   truncateEverything(callback);
 };
@@ -555,10 +588,6 @@ function storeWorker(properties, doneCallback) {
   var type = properties.type;
   var classification = properties.classification;
   var itemInfo = properties.itemInfo;
-  var mainTable;
-  var classTable;
-  var updateParams = [];
-  var tasks = 0;
 
   switch (type) {
     case 'dir':
@@ -591,6 +620,9 @@ function storeWorker(properties, doneCallback) {
         if (doneCallback) {doneCallback()};
       });
       break;
+    case 'var':
+      storeVar(itemInfo.name, itemInfo.value, doneCallback);
+      break;
     default:
       throw Error("FilesDb.store::: Invalid type.");
   }
@@ -621,14 +653,13 @@ FilesDb.loadSingleDirProgress = function(callback) {
 FilesDb.loadAll = function(type, classification, callback) {
   switch(type) {
     case 'file':
-      db.serialize(function() {
         loadFiles(classification, callback);
-      });
       break;
     case 'dir':
-      db.serialize(function() {
-        loadDirs(classification, callback);
-      });
+      loadDirs(classification, callback);
+      break;
+    case 'var':
+      loadVars(callback);
       break;
   }
 };

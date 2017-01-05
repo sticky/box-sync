@@ -258,4 +258,11 @@ DiskState.prototype.recordCompletion = function(type, item, callback) {
   }
 };
 
+DiskState.prototype.recordVar = function(name, value, callback) {
+  FileDb.store('var', '', {name: name, value: value}, callback);
+};
+DiskState.prototype.getVars = function(callback) {
+  FileDb.loadAll('var', '', callback);
+};
+
 module.exports = DiskState;
