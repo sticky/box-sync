@@ -26,9 +26,9 @@ ErrorFixer.setStorage(diskState);
 var times = {
   start: process.hrtime(),
   elapsed: 0
-}
+};
 
-var counts = {
+var validCounts = {
   validDirs: 0,
   validFiles: 0,
   invalidDirs: 0,
@@ -36,7 +36,35 @@ var counts = {
   read: 0,
   stored: 0,
   bytes: 0, // Not implmented yet.
-}
+};
+
+/**
+ var uploadStats = {
+  time: 0,
+  sFiles: 0,
+  sDirs: 0,
+  fDirs: 0,
+  fFiles: 0,
+  fixedDirs: 0,
+  fixedFiles: 0,
+  bytes: 0,
+  totalBytes: 0,
+  uploadingStr: '',
+  totalUploads: ''
+}; */
+
+
+var uploadCounts = {
+  totalFiles: 0,
+  totalDirs: 0,
+  goodFiles: 0,
+  badFiles: 0,
+  goodDirs: 0,
+  badDirs: 0,
+  fixedDirs: 0,
+  totalBytes: 0,
+  bytes: 0, // Not implmented yet.
+};
 
 var updateUiTimer;
 
@@ -48,66 +76,66 @@ callbacks.onDirectoryStarted = function (path) {
 
 callbacks.onBadDirectory = function (dirInfo, callback) {
   var cols = UI.getStrWidth();
-  counts.read += 1;
+  validCounts.read += 1;
   diskState.storeDir('bad', dirInfo, function(err) {
     if (err) {
       throw err;
     }
-    counts.stored += 1;
+    validCounts.stored += 1;
     UI.setStoring(formatPathProgress("", dirInfo.pathStr + "/" + dirInfo.name, cols));
-    UI.setStats({savedCt: counts.stored});
+    UI.setStats({savedCt: validCounts.stored});
     callback();
   });
   var cols = UI.getStrWidth();
-  counts.invalidDirs += 1;
-  UI.setStats({iFiles: counts.invalidDirs, time: process.hrtime(times.start)[0], totalCt: counts.read});
+  validCounts.invalidDirs += 1;
+  UI.setStats({iFiles: validCounts.invalidDirs, time: process.hrtime(times.start)[0], totalCt: validCounts.read});
 }
 
 callbacks.onBadFile = function (fileInfo, callback) {
   var cols = UI.getStrWidth();
-  counts.read += 1;
+  validCounts.read += 1;
   diskState.storeFile('bad', fileInfo, function(err) {
     if (err) {
       throw err;
     }
-    counts.stored += 1;
+    validCounts.stored += 1;
     UI.setStoring(formatPathProgress("", fileInfo.pathStr + "/" + fileInfo.name, cols));
-    UI.setStats({savedCt: counts.stored});
+    UI.setStats({savedCt: validCounts.stored});
     callback();
   });
-  counts.invalidFiles += 1;
-  UI.setStats({iDirs: counts.invalidFiles, time: process.hrtime(times.start)[0], totalCt: counts.read});
+  validCounts.invalidFiles += 1;
+  UI.setStats({iDirs: validCounts.invalidFiles, time: process.hrtime(times.start)[0], totalCt: validCounts.read});
 }
 callbacks.onValidDir = function (dirInfo, callback) {
   var cols = UI.getStrWidth();
-  counts.read += 1;
+  validCounts.read += 1;
   diskState.storeDir('valid', dirInfo, function(err) {
     if (err) {
       throw err;
     }
-    counts.stored += 1;
+    validCounts.stored += 1;
     UI.setStoring(formatPathProgress("", dirInfo.pathStr + "/" + dirInfo.name, cols));
-    UI.setStats({savedCt: counts.stored});
+    UI.setStats({savedCt: validCounts.stored});
     callback();
   });
-  counts.validDirs += 1;
-  UI.setStats({vDirs: counts.validDirs, time: process.hrtime(times.start)[0], totalCt: counts.read});
+  validCounts.validDirs += 1;
+  UI.setStats({vDirs: validCounts.validDirs, time: process.hrtime(times.start)[0], totalCt: validCounts.read});
 }
 
 callbacks.onValidFile = function (fileInfo, callback) {
   var cols = UI.getStrWidth();
-  counts.read += 1;
+  validCounts.read += 1;
   diskState.storeFile('valid', fileInfo, function(err) {
     if (err) {
       throw err;
     }
-    counts.stored += 1;
+    validCounts.stored += 1;
     UI.setStoring(formatPathProgress("", fileInfo.pathStr + "/" + fileInfo.name, cols));
-    UI.setStats({savedCt: counts.stored});
+    UI.setStats({savedCt: validCounts.stored});
     callback();
   });
-  counts.validFiles += 1;
-  UI.setStats({vFiles: counts.validFiles, time: process.hrtime(times.start)[0], totalCt: counts.read});
+  validCounts.validFiles += 1;
+  UI.setStats({vFiles: validCounts.validFiles, time: process.hrtime(times.start)[0], totalCt: validCounts.read});
 }
 
 callbacks.onIgnoredFile = function(path, file) {
@@ -131,8 +159,10 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
   async.series([
     function(callback) {
       if (error) {
+        uploadCounts.badDirs += 1;
         callbacks.onFolderError(dir, error, response, completeCallback);
       } else {
+        uploadCounts.goodDirs += 1;
         callback();
       }
     },
@@ -143,6 +173,8 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
     if (err) {
       throw Error(err);
     }
+    console.log("finished async");
+    UI.updateUploading({fDirs: uploadCounts.badDirs, sDirs: uploadCounts.goodDirs, fixedDirs: uploadCounts.fixedDirs});
     completeCallback();
   });
 }
@@ -159,9 +191,12 @@ callbacks.onFolderError = function(dir, error, response, completeCallback) {
       if (err) {
         throw err;
       }
+      uploadCounts.fixedDirs += 1;
+      uploadCounts.badDirs -= 1;
       completeCallback();
     });
   } else {
+    UI.updateUploading({fDirs: uploadCounts.badDirs, sDirs: uploadCounts.goodDirs, fixedDirs: uploadCounts.fixedDirs});
     diskState.storeDirError(dir, error, response, completeCallback);
   }
 };
@@ -173,12 +208,15 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
         if (!error.statusCode) {
           error.statusCode = 'SYS';
         }
+        uploadCounts.badFiles += 1;
         diskState.storeFileError(file, error, response, callback);
       } else {
+        uploadCounts.goodFiles += 1;
         callback();
       }
     },
     function(callback) {
+      UI.updateUploading({fFiles: uploadCounts.badFiles, sFiles: uploadCounts.goodFiles});
       diskState.recordCompletion('file', file, callback);
     }
   ], function(err) {
@@ -191,10 +229,13 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
 
 callbacks.onDoneLoadingFromDisk = function(fileState) {
   if (!program.onlyValidate) {
+    UI.startDisplay('upload');
     createBoxContent(fileState, function() {
+      UI.stopDisplay('uploading');
+      closeFiles();
+      console.log("Totally done with creating box content!");
     });
   }
-
   closeFiles();
 };
 
@@ -243,7 +284,6 @@ function uploadDirectory(dir, onDone) {
     }
 
     if (realDir) {
-      console.log("trying to record completion");
       diskState.recordCompletion('dir', dir);
     }
     onDone();
@@ -478,7 +518,6 @@ function putFilesOnBox(files, doneCallback) {
       uploader.makeFile(file, callbacks.onFileComplete, callback);
     });
   }, function() {
-    console.log("Done with files!");
     doneCallback();
   });
 }

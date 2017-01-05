@@ -9,6 +9,7 @@ var outputStream = process.stdout;
 var dirty = true;
 var active = false;
 var renderTimer;
+var uploadStart = 0;
 var displayTime = 0;
 
 var validStats = {
@@ -19,10 +20,27 @@ var validStats = {
   iFiles: 0,
   totalCt: 0,
   savedCt: 0,
-  bytes: 0,
+  bytesDone: 0,
+  totalBytes: 0,
   readingStr: '',
   storingStr: ''
-}
+};
+
+var uploadStats = {
+  time: 0,
+  tfiles: 0,
+  tDirs: 0,
+  sFiles: 0,
+  sDirs: 0,
+  fDirs: 0,
+  fFiles: 0,
+  fixedDirs: 0,
+  fixedFiles: 0,
+  bytes: 0,
+  totalBytes: 1978095314944, //Hardcoded for now.
+  uploadingStr: '',
+  totalUploads: ''
+};
 
 var lastStrRendered = '';
 
@@ -39,9 +57,25 @@ var overallBar = new ProgressBar('  progress [:bar] :rate/bps :percent :etas', {
   total: 0
 });
 
-function setupRenderInterval() {
+function setupRenderInterval(type) {
 
-  renderTimer = setInterval(renderValidation, 1000);
+  switch(type) {
+    case 'validate':
+      renderTimer = setInterval(renderValidation, 1000);
+      break;
+    case 'upload':
+      renderTimer = setInterval(renderUploading, 1000);
+      break;
+  }
+}
+
+function getEta() {
+  var ratio = uploadStats.bytes / uploadStats.totalBytes;
+  ratio = Math.min(Math.max(ratio, 0), 1);
+
+  var percent = ratio * 100;
+  var elapsed = new Date - uploadStart;
+  return (percent == 100) ? 0 : elapsed * (uploadStats.totalBytes / uploadStats.bytes - 1);
 }
 
 function renderValidation() {
@@ -70,11 +104,45 @@ function renderValidation() {
   displayTime = Date.now();
 }
 
+function renderUploading() {
+  return;
+  if (!dirty || !active) {
+    return;
+  }
+  if (Date.now() - displayTime < RENDER_INTERVAL_MS) {
+    return;
+  }
+
+  var eta = getEta();
+
+  outputStream.write('\x1Bc');
+  outputStream.write('Uploading Files\n');
+  outputStream.write('\n\n');
+
+  outputStream.write('Finished Files: ' + uploadStats.sFiles + '\n');
+  outputStream.write('Finished Dirs: ' + uploadStats.sDirs + '\n');
+  outputStream.write('Failed Dirs (unhandled): ' + uploadStats.fDirs + '\n');
+  outputStream.write('Failed Dirs (auto-fixed): ' + uploadStats.fixedDirs + '\n');
+  outputStream.write('Failed Files: ' + uploadStats.fFiles + '\n');
+  outputStream.write('Uploaded (bytes): ' + uploadStats.bytes + ' / ' + uploadStats.totalBytes + '\n');
+  outputStream.write('Duration (s): ' + (Date.now() - uploadStart) + '\n');
+  outputStream.write('ETA: ' + eta + '\n');
+
+  dirty = false;
+  displayTime = Date.now();
+}
+
 ConsoleOutput.startDisplay = function(displayName) {
   switch(displayName) {
     case 'validate':
       active = true;
       renderValidation();
+      displayTime = Date.now();
+      setupRenderInterval();
+      break;
+    case 'upload':
+      active = true;
+      renderUploading();
       displayTime = Date.now();
       setupRenderInterval();
       break;
@@ -119,6 +187,21 @@ ConsoleOutput.setStats = function (stats) {
     renderValidation();
   }
 };
+
+ConsoleOutput.updateUploading = function(stats) {
+  var needsRender = false;
+  for (var attrname in stats) {
+    if (uploadStats[attrname] !== stats[attrname]) {
+      needsRender = true;
+      uploadStats[attrname] = stats[attrname];
+    }
+  }
+  if (needsRender) {
+    dirty = true;
+    renderUploading();
+  }
+}
+
 
 ConsoleOutput.getStrWidth = function() {
   return outputStream.columns;

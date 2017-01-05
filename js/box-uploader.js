@@ -28,7 +28,7 @@ function putFolderOnBox(dir, itemComplete, doneCallback) {
       self.client.folders.create(info.remoteId, dir.name, function(err, response) {
         itemComplete(dir, err, response, callback);
       });
-    },
+    }
   ], function(err) {
     doneCallback(err);
   });
