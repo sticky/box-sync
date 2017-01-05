@@ -598,7 +598,7 @@ function storeWorker(properties, doneCallback) {
 
 //TODO: Figure out a way to make this more like a transaction, since we have multiple statements to complete.
 FilesDb.store = function(type, classification, itemInfo, doneCallback) {
-  if (!stmtDir || stmtFile) {
+  if (!stmtDir || !stmtFile) {
     prepareStatements(function(err) {
       queue.push({type: type, classification: classification, itemInfo: itemInfo}, doneCallback);
     });
