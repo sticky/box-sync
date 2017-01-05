@@ -148,7 +148,23 @@ callbacks.onCategorizeComplete = function() {
   var stats = validator.getStats();
   clearTimeout(updateUiTimer);
   UI.stopDisplay();
-  console.log("Time elapsed (s):",  process.hrtime(times.start)[0]);
+
+  async.series([
+    function(callback) {
+      diskState.recordVar('bytes', stats.bytes, callback);
+    },
+    function(callback) {
+      diskState.recordVar('completed_validate', true, callback);
+    },
+  ], function() {
+    console.log("# valid", stats.validCounts.files);
+    console.log("# valid dirs", stats.validCounts.dirs);
+    console.log("# bad file lengths", stats.badCounts.long);
+    console.log("# bad file chars", stats.badCounts.unprintable);
+    console.log("# bad whitespace", stats.badCounts.spaces);
+    console.log("# bytes", stats.bytes);
+    console.log("Time elapsed (s):",  process.hrtime(times.start)[0]);
+  });
 }
 
 callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
@@ -329,11 +345,25 @@ function onFdInitalized(source, freshStart) {
       UI.setStats({time: process.hrtime(times.start)[0]});
     }, 1000);
 
-    diskState.prepareForInserts(function() {
-      validator.categorizeDirectoryContents(source, null, options, true, function() {
+    async.series([
+      function(callback) {
+        diskState.prepareForInserts(callback);
+      },
+      function(callback) {
+        validator.categorizeDirectoryContents(source, null, options, true, callback);
+      },
+      function(callback) {
         console.log("Finishing writes to database...");
-        diskState.completeInserts(callbacks.onCategorizeComplete);
-      });
+        diskState.completeInserts(callback);
+      },
+      function(callback) {
+        callbacks.onCategorizeComplete();
+      }
+    ], function(err) {
+      if (err) {
+        throw err;
+      }
+      console.log("Done!!!");
     });
   } else if (!program.onlyValidate) {
     loadPreviousState(callbacks.onDoneLoadingFromDisk);

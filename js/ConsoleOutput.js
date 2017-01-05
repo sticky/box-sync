@@ -91,7 +91,7 @@ function renderValidation() {
   outputStream.write('Valid Dirs: ' + validStats.vDirs + '\n');
   outputStream.write('Invalid Dirs: ' + validStats.iDirs + '\n');
   outputStream.write('Invalid Files: ' + validStats.iFiles + '\n');
-  outputStream.write('Bytes discovered: ' + validStats.bytes + '\n');
+  outputStream.write('Bytes discovered: ' + validStats.bytesDone + '\n');
 
   outputStream.write('\n\n');
 
