@@ -347,6 +347,12 @@ function onFdInitalized(source, freshStart) {
 
     async.series([
       function(callback) {
+        diskState.recordVar('completed_validate', false, callback);
+      },
+      function(callback) {
+        diskState.recordVar('bytes', 0, callback);
+      },
+      function(callback) {
         diskState.prepareForInserts(callback);
       },
       function(callback) {
