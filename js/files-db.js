@@ -190,10 +190,10 @@ function loadDirs(classification, onFinish) {
 function loadDirContents(dirId, what, classification, callback) {
   switch(what) {
     case 'dir':
-      loadDirsWithParent(dirId, classification, callback);
+      loadFromParent('dir', dirId, classification, callback);
       break;
     case 'file':
-      loadFilesWithParent(dirId, classification, callback);
+      loadFromParent('file', dirId, classification, callback);
       break;
     default:
       throw new Error("loadDirContents: unrecognized type.  (" + what + ")");

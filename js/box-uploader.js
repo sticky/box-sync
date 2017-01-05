@@ -81,8 +81,11 @@ function putFileOnBox(file, itemComplete, doneCallback) {
   });
 }
 
-function getBoxFolderContents(boxId, callback) {
-  var qs = null;
+function getBoxFolderContents(boxId, offset, callback) {
+  var qs = {
+    offset: offset ? offset: 0,
+    fields: 'name'
+  };
   this.client.folders.getItems(boxId, qs, callback);
 }
 
@@ -125,8 +128,8 @@ BoxUploader.prototype.makeDir = function(dir, onFolderComplete, callback) {
 BoxUploader.prototype.makeFile = function(file, onFileComplete, callback) {
   putFileOnBox.call(this, file, onFileComplete, callback);
 };
-BoxUploader.prototype.getDirContents = function(boxId, callback) {
-  getBoxFolderContents.call(this, boxId, callback);
+BoxUploader.prototype.getDirContents = function(boxId, offset, callback) {
+  getBoxFolderContents.call(this, boxId, offset, callback);
 };
 
 module.exports = BoxUploader;

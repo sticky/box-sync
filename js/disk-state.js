@@ -195,15 +195,12 @@ DiskState.prototype.addRemoteId = function(localDirId, remoteId) {
   folderIdMap[localDirId] = remoteId;
 }
 DiskState.prototype.getRemoteDirId = function(searchInfo, onDoneCallback) {
-  console.log("search info to get remote id", searchInfo);
   // Hopefully this has been requested before so we can avoid slower DB hits.
   if (folderIdMap[searchInfo.dirId]) {
     searchInfo.remoteId = folderIdMap[searchInfo.dirId];
-    console.log("already had remote id", searchInfo.remoteId);
     onDoneCallback();
   } else {
     FileDb.loadRemoteIdForDir(searchInfo.dirId, function(folderId) {
-      console.log("Found folder id :", folderId);
       folderIdMap[searchInfo.dirId] = folderId;
       searchInfo.remoteId = folderId;
       onDoneCallback();
