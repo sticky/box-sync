@@ -39,22 +39,6 @@ var validCounts = {
   bytes: 0, // Not implmented yet.
 };
 
-/**
- var uploadStats = {
-  time: 0,
-  sFiles: 0,
-  sDirs: 0,
-  fDirs: 0,
-  fFiles: 0,
-  fixedDirs: 0,
-  fixedFiles: 0,
-  bytes: 0,
-  totalBytes: 0,
-  uploadingStr: '',
-  totalUploads: ''
-}; */
-
-
 var uploadCounts = {
   totalFiles: 0,
   totalDirs: 0,
@@ -64,7 +48,7 @@ var uploadCounts = {
   badDirs: 0,
   fixedDirs: 0,
   totalBytes: 0,
-  bytes: 0, // Not implmented yet.
+  bytes: 0,
 };
 
 var updateUiTimer;
@@ -142,7 +126,9 @@ callbacks.onValidFile = function (fileInfo, callback) {
 callbacks.onIgnoredFile = function(path, file) {
   try {
     fs.appendFileSync(fds.ignoredFiles, path + '/' + file + '\n');
-  } catch(err) {}
+  } catch(err) {
+    throw err;
+  }
 }
 
 callbacks.onCategorizeComplete = function() {
@@ -247,6 +233,7 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
 callbacks.onDoneLoadingFromDisk = function(fileState) {
   if (!program.onlyValidate) {
     UI.startDisplay('upload');
+    UI.updateUploading({totalBytes: uploadCounts.totalBytes, start: Date.now()});
     createBoxContent(fileState, function() {
       UI.stopDisplay('uploading');
       closeFiles();
@@ -255,6 +242,13 @@ callbacks.onDoneLoadingFromDisk = function(fileState) {
   }
   closeFiles();
 };
+
+callbacks.onFileData = function(chunk) {
+  uploadCounts.bytes += chunk.length;
+  UI.updateUploading({bytes: uploadCounts.bytes});
+};
+
+callbacks.onFileEnd = function() {};
 
 function createBoxContent(fileState, callback) {
   fileState.getIncompleteDirs(function(dirs) {
@@ -472,6 +466,17 @@ function loadPreviousState(doneCallback) {
     });
   });
 
+  tasks.push(function(callback) {
+    diskState.getVars(function(rows) {
+      rows.forEach(function(varRow) {
+        if (varRow.Name === 'bytes') {
+          uploadCounts.totalBytes = parseInt(varRow.Value);
+        }
+      });
+      callback();
+    });
+  });
+
   async.series(tasks, function() {
     if (doneCallback) {
       doneCallback(diskState);
@@ -560,7 +565,7 @@ function putFilesOnBox(files, doneCallback) {
       if (file.issues.length !== 0) {
         throw new Error("BAD FILE, SHOULD NOT BE TRYING TO SYNC: " + file.localFolderId);
       }
-      uploader.makeFile(file, callbacks.onFileComplete, callback);
+      uploader.makeFile(file, {data: callbacks.onFileData, end: callbacks.onFileEnd}, callbacks.onFileComplete, callback);
     });
   }, function() {
     doneCallback();
