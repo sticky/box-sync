@@ -14,7 +14,8 @@ var ErrorFixer = require('./js/error-fixer');
 var validator = require('./js/filename-validator');
 
 var FILENAMES = {
-  ignoredFiles: 'files/Ignored.txt',
+  ignoredFiles: 'files/IgnoredFiles.txt',
+  ignoredDirs: 'files/IgnoredDirs.txt',
 };
 
 var callbacks = {};
@@ -414,12 +415,20 @@ function initializeData(fresh, callback) {
   if (fresh === true) {
     tasks.push(function(callback) {
       console.log("treating as fresh start (purging all existing state)");
-      fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'w');
+      try {
+        fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'w');
+      } catch (err) {
+        throw err;
+      }
       DiskState.clear(callback);
     });
   } else {
     tasks.push(function(callback) {
-      fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'r');
+      try {
+        fds.ignoredFiles = fs.openSync(__dirname + '/' + FILENAMES.ignoredFiles, 'w');
+      } catch (err) {
+        throw err;
+      }
       callback();
     });
   }
