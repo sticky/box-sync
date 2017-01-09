@@ -131,7 +131,7 @@ callbacks.onIgnoredFile = function(path, file) {
   }
 }
 
-callbacks.onCategorizeComplete = function() {
+callbacks.onCategorizeComplete = function(callback) {
   var stats = validator.getStats();
   clearTimeout(updateUiTimer);
   UI.stopDisplay();
@@ -151,6 +151,7 @@ callbacks.onCategorizeComplete = function() {
     console.log("# bad whitespace", stats.badCounts.spaces);
     console.log("# bytes", stats.bytes);
     console.log("Time elapsed (s):",  process.hrtime(times.start)[0]);
+    callback();
   });
 }
 
@@ -230,17 +231,16 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
   });
 }
 
-callbacks.onDoneLoadingFromDisk = function(fileState) {
+callbacks.onDoneLoadingFromDisk = function(callback) {
   if (!program.onlyValidate) {
     UI.startDisplay('upload');
     UI.updateUploading({totalBytes: uploadCounts.totalBytes, start: Date.now()});
-    createBoxContent(fileState, function() {
+    createBoxContent(function() {
       UI.stopDisplay('uploading');
-      closeFiles();
+      callback();
       console.log("Totally done with creating box content!");
     });
   }
-  closeFiles();
 };
 
 callbacks.onFileData = function(chunk) {
@@ -250,8 +250,8 @@ callbacks.onFileData = function(chunk) {
 
 callbacks.onFileEnd = function() {};
 
-function createBoxContent(fileState, callback) {
-  fileState.getIncompleteDirs(function(dirs) {
+function createBoxContent(callback) {
+  diskState.getIncompleteDirs(function(dirs) {
     if (dirs === false)  {
       // Fake the root directory as a starting point.
       dirs = [new StickyDirInfo({inode: 'noparent', parent: 'noparent'})];
@@ -264,7 +264,7 @@ function createBoxContent(fileState, callback) {
       if (err) {
         throw new Error("createBoxContent: " + err);
       }
-      createBoxContent(fileState, callback);
+      createBoxContent(callback);
     });
   });
 }
@@ -323,6 +323,35 @@ program
   .parse(process.argv);
 
 function onFdInitalized(source, freshStart) {
+  var tasks = [];
+  var diskState = {state: 0};
+
+  /* TODO: Get Filename-Validator module async-ified so that it's safe to run a validate
+     followed immediately by the asyncrounous loadPreviousState behavior. */
+  if (program.onlyValidate || freshStart) {
+    tasks.push(function(cb) {
+      runValidation(source, cb);
+    });
+  } else if (!program.onlyValidate) {
+    tasks.push(function(cb) {
+      loadPreviousState(function() {
+        cb();
+      });
+    });
+    tasks.push(function(cb) {
+      callbacks.onDoneLoadingFromDisk(cb);
+    });
+  }
+
+  async.series(tasks,function(err) {
+    if (err) {
+      throw err;
+    }
+    closeFiles();
+  });
+}
+
+function runValidation(source, callback) {
   var options = {
     onBadFile: callbacks.onBadFile,
     onBadDir: callbacks.onBadDirectory,
@@ -331,46 +360,38 @@ function onFdInitalized(source, freshStart) {
     onValidFile: callbacks.onValidFile,
     onIgnoredFile: callbacks.onIgnoredFile
   };
+  UI.startDisplay('validate');
+  updateUiTimer = setInterval(function() {
+    UI.setStats({time: process.hrtime(times.start)[0]});
+  }, 1000);
 
-  /* TODO: Get Filename-Validator module async-ified so that it's safe to run a validate
-     followed immediately by the asyncrounous loadPreviousState behavior. */
-  if (program.onlyValidate || freshStart) {
-    UI.startDisplay('validate');
-    updateUiTimer = setInterval(function() {
-      UI.setStats({time: process.hrtime(times.start)[0]});
-    }, 1000);
-
-    async.series([
-      function(callback) {
-        diskState.recordVar('completed_validate', false, callback);
-      },
-      function(callback) {
-        diskState.recordVar('bytes', 0, callback);
-      },
-      function(callback) {
-        diskState.prepareForInserts(callback);
-      },
-      function(callback) {
-        validator.categorizeDirectoryContents(source, null, options, true, callback);
-      },
-      function(callback) {
-        console.log("Finishing writes to database...");
-        diskState.completeInserts(callback);
-      },
-      function(callback) {
-        callbacks.onCategorizeComplete();
-      }
-    ], function(err) {
-      if (err) {
-        throw err;
-      }
-      console.log("Done!!!");
-    });
-  } else if (!program.onlyValidate) {
-    loadPreviousState(callbacks.onDoneLoadingFromDisk);
-  } else {
-    closeFiles();
-  }
+  async.series([
+    function(callback) {
+      diskState.recordVar('completed_validate', false, callback);
+    },
+    function(callback) {
+      diskState.recordVar('bytes', 0, callback);
+    },
+    function(callback) {
+      diskState.prepareForInserts(callback);
+    },
+    function(callback) {
+      validator.categorizeDirectoryContents(source, null, options, true, callback);
+    },
+    function(callback) {
+      console.log("Finishing writes to database...");
+      diskState.completeInserts(callback);
+    },
+    function(callback) {
+      callbacks.onCategorizeComplete(callback);
+    }
+  ], function(err) {
+    if (err) {
+      throw err;
+    }
+    console.log("Done!!!");
+    callback();
+  });
 }
 
 function closeFiles() {
