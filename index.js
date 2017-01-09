@@ -185,9 +185,7 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
 
 callbacks.onFolderError = function(dir, error, response, completeCallback) {
   var info = {};
-  if (!error.statusCode) {
-    error.statusCode = 'SYS';
-  }
+  generalErrorTouchup(error);
   if (ErrorFixer.canFixError('dir', error.statusCode, error.message)) {
     info.error = error;
     info.dir = dir;
@@ -209,9 +207,7 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
   async.series([
     function(callback) {
       if (error) {
-        if (!error.statusCode) {
-          error.statusCode = 'SYS';
-        }
+        generalErrorTouchup(error);
         uploadCounts.badFiles += 1;
         diskState.storeFileError(file, error, response, callback);
       } else {
@@ -231,7 +227,17 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
   });
 }
 
-callbacks.onDoneLoadingFromDisk = function(callback) {
+function generalErrorTouchup(error) {
+  if (!error.statusCode) {
+    error.statusCode = 'SYS';
+  }
+  // We don't want to keep trying if we're not even authenticated correctly.
+  if (error.statusCode == 400 || error.statusCode == 'pre-400') {
+    throw new Error("Can't authenticate with the server.");
+  }
+}
+
+function beginUploading(callback) {
   if (!program.onlyValidate) {
     UI.startDisplay('upload');
     UI.updateUploading({totalBytes: uploadCounts.totalBytes, start: Date.now()});
