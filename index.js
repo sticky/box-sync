@@ -231,9 +231,10 @@ function generalErrorTouchup(error) {
   if (!error.statusCode) {
     error.statusCode = 'SYS';
   }
+
   // We don't want to keep trying if we're not even authenticated correctly.
   if (error.statusCode == 400 || error.statusCode == 'pre-400') {
-    throw new Error("Can't authenticate with the server.");
+    //throw new Error("Can't authenticate with the server.");
   }
 }
 
