@@ -9,7 +9,6 @@ var outputStream = process.stdout;
 var dirty = true;
 var active = false;
 var renderTimer;
-var uploadStart = 0;
 var displayTime = 0;
 
 var validStats = {
@@ -27,6 +26,7 @@ var validStats = {
 };
 
 var uploadStats = {
+  start: 0,
   time: 0,
   tfiles: 0,
   tDirs: 0,
@@ -37,7 +37,7 @@ var uploadStats = {
   fixedDirs: 0,
   fixedFiles: 0,
   bytes: 0,
-  totalBytes: 1978095314944, //Hardcoded for now.
+  totalBytes: 0, //Hardcoded for now.
   uploadingStr: '',
   totalUploads: ''
 };
@@ -74,7 +74,7 @@ function getEta() {
   ratio = Math.min(Math.max(ratio, 0), 1);
 
   var percent = ratio * 100;
-  var elapsed = new Date - uploadStart;
+  var elapsed = Date.now() - uploadStats.start;
   return (percent == 100) ? 0 : elapsed * (uploadStats.totalBytes / uploadStats.bytes - 1);
 }
 
@@ -105,7 +105,6 @@ function renderValidation() {
 }
 
 function renderUploading() {
-  return;
   if (!dirty || !active) {
     return;
   }
@@ -125,8 +124,8 @@ function renderUploading() {
   outputStream.write('Failed Dirs (auto-fixed): ' + uploadStats.fixedDirs + '\n');
   outputStream.write('Failed Files: ' + uploadStats.fFiles + '\n');
   outputStream.write('Uploaded (bytes): ' + uploadStats.bytes + ' / ' + uploadStats.totalBytes + '\n');
-  outputStream.write('Duration (s): ' + (Date.now() - uploadStart) + '\n');
-  outputStream.write('ETA: ' + eta + '\n');
+  outputStream.write('Duration (s): ' + (Date.now() - uploadStats.start) / 1000 + '\n');
+  outputStream.write('ETA: ' + eta / 1000 + '\n');
 
   dirty = false;
   displayTime = Date.now();

@@ -34,7 +34,7 @@ function putFolderOnBox(dir, itemComplete, doneCallback) {
   });
 }
 
-function putFileOnBox(file, itemComplete, doneCallback) {
+function putFileOnBox(file, streamHandlers, itemComplete, doneCallback) {
   var self = this;
   var fullFileName = file.pathStr + '/' + file.name;
   var fsStat = fs.statSync(fullFileName);
@@ -72,6 +72,8 @@ function putFileOnBox(file, itemComplete, doneCallback) {
       stream.on('error', function(err) {
         throw new Error("Stream error: " + err);
       });
+
+      stream.on('data', streamHandlers.data);
       self.client.files.uploadFile(info.remoteId, file.name, stream, function(err, response) {
         itemComplete(file, err, response, callback);
       });
@@ -125,8 +127,8 @@ function BoxUploader(diskState, rootRemoteId) {
 BoxUploader.prototype.makeDir = function(dir, onFolderComplete, callback) {
   putFolderOnBox.call(this, dir, onFolderComplete, callback);
 };
-BoxUploader.prototype.makeFile = function(file, onFileComplete, callback) {
-  putFileOnBox.call(this, file, onFileComplete, callback);
+BoxUploader.prototype.makeFile = function(file, streamHandlers, onFileComplete, callback) {
+  putFileOnBox.call(this, file, streamHandlers, onFileComplete, callback);
 };
 BoxUploader.prototype.getDirContents = function(boxId, offset, callback) {
   getBoxFolderContents.call(this, boxId, offset, callback);

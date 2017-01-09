@@ -18,7 +18,6 @@ function getDirEntries(dirId, offset, callback) {
 }
 
 function correctDirRemoteId(issueInfo, callback) {
-  console.log("Trying to fix a missing remote ID for:", issueInfo.dir);
   var dir = issueInfo.dir;
   var newRemoteId;
   var parentRemoteId;
@@ -64,7 +63,6 @@ function correctDirRemoteId(issueInfo, callback) {
       entryInfo.entries.some(function(entry, index, array) {
         checkedCt +=1;
         if (entry.type === 'folder' && entry.name === dir.name) {
-          console.log("found it!", entry.id);
           newRemoteId = entry.id;
           return true;
         }
