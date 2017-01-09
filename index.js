@@ -316,7 +316,7 @@ program
   .option('-v, --only-validate', 'Only do the initial validation and categorization of the files.')
   .option('-n, --assume-new', 'Completely ignore results from previous runs.')
   .option('-r, --redo', 'Try to upload all files, ignoring previous upload attempts.')
-  .option('-fix, --fix-errors', 'Try to fix errors encountered on a previous upload attempt.')
+  .option('-f, --fix-errors', 'Try to fix errors encountered on a previous upload attempt.')
   .action(function(source, dest) {
     console.log("SOURCE", source);
     var freshStart = program.assumeNew ? true : false;
@@ -339,14 +339,15 @@ function onFdInitalized(source, freshStart) {
       runValidation(source, cb);
     });
   } else if (!program.onlyValidate) {
+    tasks.push(loadPreviousState);
+
+    if (program.fixErrors) {
+      throw new Error("Fixing errors not implemented!");
+    }
+
     tasks.push(function(cb) {
-      loadPreviousState(function() {
-        cb();
-      });
-    });
-    tasks.push(function(cb) {
-      callbacks.onDoneLoadingFromDisk(cb);
-    });
+     beginUploading(cb);
+     });
   }
 
   async.series(tasks,function(err) {
@@ -506,60 +507,9 @@ function loadPreviousState(doneCallback) {
 
   async.series(tasks, function() {
     if (doneCallback) {
-      doneCallback(diskState);
+      doneCallback(null, diskState);
     }
   })
-}
-
-function badDirToString(badDir) {
-  var dirStr = badDir.str();
-  var issueStr = badDir.issues.reduce(function(str, current) {
-    return str + current + ';';
-  }, '');
-
-  // Report more information in the case of bad characters.
-  if (badDir.issues.indexOf("chars") >= 0) {
-    return issueStr + StickyDirInfo.SEP + dirStr + StickyDirInfo.SEP + callOutProblemChars(badDir.name) + '\n';
-  }
-
-  return issueStr + StickyDirInfo.SEP + dirStr + '\n';
-}
-
-function badFileToString(badFile) {
-  var fileStr = badFile.str();
-  var issueStr = badFile.issues.reduce(function(str, current) {
-    return str + current + ';';
-  }, '');
-
-  // Report more information in the case of bad characters.
-  if (badFile.issues.indexOf("chars") >= 0) {
-    return issueStr + StickyFileInfo.SEP + fileStr + StickyFileInfo.SEP + callOutProblemChars(badFile.name) + '\n';
-  }
-
-  return issueStr + StickyFileInfo.SEP + fileStr;
-}
-
-function validFileToString(goodFile) {
-  return goodFile.str() + '\n';
-}
-
-function validDirToString(goodDir) {
-  return goodDir.str() + '\n';
-}
-
-function callOutProblemChars(str) {
-  // We don't like something in the characters of this string.  Wrap each problem one.
-  // /[^A-Za-z 0-9 \.,\?""!@#\$%\^&\*\(\)-_=\+;:<>\/\\\|\}\{\[\]`~]/g works too?
-  str = str.replace(/[^ -~]|[\/\\]/g, function(currentStr) {
-    var newStr = '[';
-
-    for (var i = 0; i < currentStr.length; ++i) {
-      newStr += '#' + currentStr.charCodeAt(i) + ';';
-    }
-
-    return newStr + ']';
-  });
-  return str;
 }
 
 function formatPathProgress(label, path, width) {
