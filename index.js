@@ -533,7 +533,7 @@ function formatPathProgress(label, path, width) {
 }
 
 function putFoldersOnBox(dirs, doneCallback) {
-  async.eachSeries(dirs, function(dir, callback) {
+  async.eachLimit(dirs, 3, function(dir, callback) {
     diskState.recordStart('dir', dir, function() {
       if (dir.issues.length !== 0) {
         throw new Error("BAD DIR, SHOULD NOT BE TRYING TO SYNC: " + dir.localId);
@@ -546,7 +546,7 @@ function putFoldersOnBox(dirs, doneCallback) {
 }
 
 function putFilesOnBox(files, doneCallback) {
-  async.eachSeries(files, function(file, callback) {
+  async.eachLimit(files, 10, function(file, callback) {
     diskState.recordStart('file', file, function() {
       if (file.issues.length !== 0) {
         throw new Error("BAD FILE, SHOULD NOT BE TRYING TO SYNC: " + file.localFolderId);
