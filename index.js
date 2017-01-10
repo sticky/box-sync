@@ -156,7 +156,6 @@ callbacks.onCategorizeComplete = function(callback) {
 }
 
 callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
-  var remoteId;
   if (response) {
     dir.remoteId = response.id;
   }
@@ -204,6 +203,9 @@ callbacks.onFolderError = function(dir, error, response, completeCallback) {
 };
 
 callbacks.onFileComplete = function(file, error, response, completeCallback) {
+  if (response && response.entries && response['total_count'] === 1) {
+    file.remoteId = response.entries[0].id;
+  }
   async.series([
     function(callback) {
       if (error) {
@@ -214,6 +216,9 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
         uploadCounts.goodFiles += 1;
         callback();
       }
+    },
+    function(callback) {
+      diskState.storeFile('valid', file, callback);
     },
     function(callback) {
       UI.updateUploading({fFiles: uploadCounts.badFiles, sFiles: uploadCounts.goodFiles});

@@ -44,9 +44,9 @@ function prepareStatements(callback) {
 }
 
 function finishPreparing(callback) {
-  stmtDir = db.prepare('INSERT OR REPLACE INTO ' + TABLE_DIRS + '(Sys_Id_Num, Parent_Id, Remote_Id, Full_Path, Name) VALUES ($id, $parentId, $remoteId, $path, $name);',
+  stmtDir = db.prepare('INSERT OR REPLACE INTO ' + TABLE_DIRS + '(Sys_Id_Num, Parent_Id, Remote_Id, Full_Path, Name, Created, Updated) VALUES ($id, $parentId, $remoteId, $path, $name, $created, $updated);',
   [], function() {
-    stmtFile = db.prepare('INSERT OR REPLACE INTO ' + TABLE_FILES + ' (Folder_Id, Full_Path, Name) VALUES ($folderId, $path, $name);', [], callback);
+    stmtFile = db.prepare('INSERT OR REPLACE INTO ' + TABLE_FILES + ' (Folder_Id, Full_Path, Name, Remote_Id, Created, Updated) VALUES ($folderId, $path, $name, $remote, $created, $updated);', [], callback);
   });
 }
 
@@ -130,13 +130,15 @@ function truncateTables(tables, callback) {
   });
 }
 
-function storeDirectory(id, parentId, remoteId, fullPath, name, onDoneCallback) {
+function storeDirectory(id, parentId, remoteId, fullPath, name, createdStr, updatedStr, onDoneCallback) {
   var updateParams = {
     $id: id,
     $parentId: parentId,
     $remoteId: remoteId,
     $path: fullPath,
-    $name: name
+    $name: name,
+    $created: createdStr,
+    $updated: updatedStr,
   };
   setForeignKeysPragma();
 
@@ -151,11 +153,14 @@ function storeDirectory(id, parentId, remoteId, fullPath, name, onDoneCallback) 
   });
 }
 
-function storeFile(localFolderId, fullPath, name, onDoneCallback) {
+function storeFile(localFolderId, fullPath, name, remoteId, createdStr, updatedStr, onDoneCallback) {
   var updateParams = {
     $folderId: localFolderId,
     $path: fullPath,
-    $name: name
+    $name: name,
+    $remote: remoteId,
+    $created: createdStr,
+    $updated: updatedStr,
   };
   setForeignKeysPragma();
 
@@ -593,7 +598,7 @@ function storeWorker(properties, doneCallback) {
     case 'dir':
       async.series([
         function(callback) {
-          storeDirectory(itemInfo.localId, itemInfo.parentId, itemInfo.remoteId, itemInfo.pathStr, itemInfo.name, callback);
+          storeDirectory(itemInfo.localId, itemInfo.parentId, itemInfo.remoteId, itemInfo.pathStr, itemInfo.name, itemInfo.created, itemInfo.updated, callback);
         },
         function(callback) {
           storeDirIssues(itemInfo.localId, itemInfo.issues, callback);
@@ -608,7 +613,7 @@ function storeWorker(properties, doneCallback) {
     case 'file':
       async.series([
         function(callback) {
-          storeFile(itemInfo.localFolderId, itemInfo.pathStr, itemInfo.name, callback);
+          storeFile(itemInfo.localFolderId, itemInfo.pathStr, itemInfo.name, itemInfo.remoteId, itemInfo.created, itemInfo.updated, callback);
         },
         function(callback) {
           storeFileIssues(itemInfo.localFolderId, itemInfo.name, itemInfo.issues, callback);

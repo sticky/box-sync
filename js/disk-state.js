@@ -3,6 +3,7 @@
 var fs = require('fs');
 var readline = require('readline');
 var async = require('async');
+var Util = require('./util');
 var StickyFile = require('./file-info');
 var StickyDir = require('./dir-info');
 var FileDb = require('./files-db');
@@ -26,15 +27,30 @@ function dbRowToFile(row, shouldCache) {
     localFolderId: row.Folder_Id,
     path: row.Full_Path,
     name: row.Name,
+    updated: row.Updated,
+    created: row.Created,
     problems: getRowIssues(row)
   };
+
   var newFile = new StickyFile(fileOpts);
+
+  // Initial dev versions weren't keeping track of this in the DB.
+  if (row.Updated === 'MISSING' || row.Created === 'MISSING') {
+    fixItemTimestamps(newFile);
+  }
 
   if (shouldCache) {
     fileCache[fileHash(newFile)] = newFile;
   }
 
   return newFile;
+}
+
+function fixItemTimestamps(file) {
+  var fullFileName = file.pathStr + '/' + file.name;
+  var fsStat = fs.statSync(fullFileName);
+  file.created = Util.dateToBoxDateString(new Date(fsStat.ctime));
+  file.updated = Util.dateToBoxDateString(new Date(fsStat.mtime));
 }
 
 function dbRowToDir(row, shouldCache) {
@@ -44,9 +60,16 @@ function dbRowToDir(row, shouldCache) {
     remote: row.Remote_Id,
     path: row.Full_Path,
     name: row.Name,
-    problems: getRowIssues(row)
+    updated: row.Updated,
+    created: row.Created,
+    problems: getRowIssues(row),
   };
   var newDir = new StickyDir(fileOpts);
+
+  // Initial dev versions weren't keeping track of this in the DB.
+  if (row.Updated === 'MISSING' || row.Created === 'MISSING') {
+    fixItemTimestamps(newDir);
+  }
 
   if (shouldCache) {
     dirCache[newDir.inode] = newDir;
