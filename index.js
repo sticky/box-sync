@@ -233,8 +233,11 @@ function generalErrorTouchup(error) {
   }
 
   // We don't want to keep trying if we're not even authenticated correctly.
+  // But try to avoid other random 400 "bad request" messages.
   if (error.statusCode == 400 || error.statusCode == 'pre-400') {
-    //throw new Error("Can't authenticate with the server.");
+    if (error.message.includes('Auth') || error.message.includes('auth')) {
+      throw new Error("Possible authentication failure  Server response: " + error.message);
+    }
   }
 }
 
