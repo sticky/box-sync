@@ -171,7 +171,21 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
     },
     function(callback) {
       diskState.storeDir('valid', dir, callback);
-    }
+    },
+    function(callback) {
+      // Have to prep the DB because it doesn't initialize in a parallel-safe way.
+      diskState.recordVar('uploaded_dir_fixed', uploadCounts.fixedDirs, callback);
+    },
+    function(callback) {
+      async.parallel([
+        function(cb) {
+          diskState.recordVar('uploaded_dir_fail', uploadCounts.badDirs, cb);
+        },
+        function(cb) {
+          diskState.recordVar('uploaded_dir_finish', uploadCounts.goodDirs, cb);
+        }
+      ], callback);
+    },
   ], function(err) {
     if (err) {
       throw Error(err);
@@ -223,7 +237,20 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
     function(callback) {
       UI.updateUploading({fFiles: uploadCounts.badFiles, sFiles: uploadCounts.goodFiles});
       diskState.recordCompletion('file', file, callback);
-    }
+    },
+    function(callback) {
+      async.parallel([
+        function(cb) {
+          diskState.recordVar('uploaded_bytes', uploadCounts.bytes, cb);
+        },
+        function(cb) {
+          diskState.recordVar('uploaded_file_fail', uploadCounts.badFiles, cb);
+        },
+        function(cb) {
+          diskState.recordVar('uploaded_file_finish', uploadCounts.goodFiles, cb);
+        }
+      ], callback);
+    },
   ], function(err) {
     if (err) {
       throw Error(err);
@@ -339,7 +366,6 @@ program
 
 function onFdInitalized(source, freshStart) {
   var tasks = [];
-  var diskState = {state: 0};
 
   /* TODO: Get Filename-Validator module async-ified so that it's safe to run a validate
      followed immediately by the asyncrounous loadPreviousState behavior. */
@@ -354,6 +380,13 @@ function onFdInitalized(source, freshStart) {
       throw new Error("Fixing errors not implemented!");
     }
 
+
+    // A switch to parallel behavior could make the DB class explode because its statement preparation
+    // is not parallel safe.
+    // Do one non-parallel call to storage to get those statements prepared.
+    tasks.push(function(cb) {
+      diskState.recordVar('nada', 0, cb);
+    });
     tasks.push(function(cb) {
      beginUploading(cb);
      });
@@ -438,8 +471,32 @@ function initializeData(fresh, callback) {
   var tasks = [];
   if (program.redo) {
     tasks.push(function(callback) {
-      console.log("Redoing uploads.");
       DiskState.clearProgress(callback);
+    });
+    // This is a dumb trick to make sure that the database finished preparing
+    // its statements; the DB store behavior is not parallel safe and will explode.
+    tasks.push(function(callback) {
+      diskState.recordVar('uploaded_dir_fixed', 0, callback);
+    });
+    tasks.push(function(callback) {
+      // Clear previous progress variables related to uploading.
+      async.parallel([
+        function(cb) {
+          diskState.recordVar('uploaded_dir_fail', 0, cb);
+        },
+        function(cb) {
+          diskState.recordVar('uploaded_dir_finish', 0, cb);
+        },
+        function(cb) {
+          diskState.recordVar('uploaded_bytes', 0, cb);
+        },
+        function(cb) {
+          diskState.recordVar('uploaded_file_fail', 0, cb);
+        },
+        function(cb) {
+          diskState.recordVar('uploaded_file_finish', 0, cb);
+        }
+      ], callback);
     });
   }
 
@@ -506,8 +563,28 @@ function loadPreviousState(doneCallback) {
   tasks.push(function(callback) {
     diskState.getVars(function(rows) {
       rows.forEach(function(varRow) {
-        if (varRow.Name === 'bytes') {
-          uploadCounts.totalBytes = parseInt(varRow.Value);
+   switch(varRow.Name) {
+          case 'bytes':
+            uploadCounts.totalBytes = parseInt(varRow.Value);
+            break;
+          case 'uploaded_bytes':
+            uploadCounts.bytes = parseInt(varRow.Value);
+            break;
+          case 'uploaded_dir_fixed':
+            uploadCounts.fixedDirs = parseInt(varRow.Value);
+            break;
+          case 'uploaded_dir_fail':
+            uploadCounts.badDirs = parseInt(varRow.Value);
+            break;
+          case 'uploaded_file_fail':
+            uploadCounts.badFiles = parseInt(varRow.Value);
+            break;
+          case 'uploaded_file_finish':
+            uploadCounts.goodFiles = parseInt(varRow.Value);
+            break;
+          case 'uploaded_dir_finish':
+            uploadCounts.goodDirs = parseInt(varRow.Value);
+            break;
         }
       });
       callback();

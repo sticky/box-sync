@@ -633,7 +633,7 @@ function storeWorker(properties, doneCallback) {
   }
 }
 
-//TODO: Figure out a way to make this more like a transaction, since we have multiple statements to complete.
+// This is not very parallel safe.  Or, rather, "prepareStatements" isn't very safe.
 FilesDb.store = function(type, classification, itemInfo, doneCallback) {
   if (!stmtDir || !stmtFile) {
     prepareStatements(function(err) {
