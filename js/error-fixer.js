@@ -3,6 +3,8 @@ var async = require('async');
 var fs = require('fs');
 var archiver = require('archiver');
 
+var FileInfo = require('./file-info');
+
 var ErrorFixer = module.exports;
 
 var BOX_ITEM_NOT_FOLDER = "Item on Box.com was not a folder.";
@@ -110,22 +112,16 @@ function correctDirRemoteId(issueInfo, callback) {
 }
 
 function createZipofDirAndSaveToStorage(issueInfo, callback) {
+  var dir = issueInfo.dir;
   var file = new FileInfo({
     localFolderId: dir.parentId,
     path: dir.pathStr,
     name: dir.name + '.zip',
+    problems: []
   });
-  var dir = issueInfo.dir;
   var output = fs.createWriteStream(file.pathStr + '/' + file.name);
   var archive = archiver('zip');
 
-  var newRemoteId;
-  var parentRemoteId;
-  var entryInfo = {
-    offset: 0,
-    totalCount: 0,
-    entries: []
-  };
   output.on('close', function() {
     store.storeFile('valid', file, callback);
   });

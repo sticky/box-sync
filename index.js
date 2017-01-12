@@ -190,7 +190,6 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
     if (err) {
       throw Error(err);
     }
-    console.log("finished async");
     UI.updateUploading({fDirs: uploadCounts.badDirs, sDirs: uploadCounts.goodDirs, fixedDirs: uploadCounts.fixedDirs});
     completeCallback();
   });
