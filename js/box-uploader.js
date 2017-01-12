@@ -59,10 +59,11 @@ function putFileOnBox(file, streamHandlers, itemComplete, doneCallback) {
         if (err) {
           preCheckGood = false;
           err.statusCode = 'pre-' + err.statusCode;
+          itemComplete(file, err, response, callback);
         } else {
           preCheckGood = true;
+          callback();
         }
-        itemComplete(file, err, response, callback);
       });
     },
     function(callback) {
