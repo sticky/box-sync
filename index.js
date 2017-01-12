@@ -562,7 +562,7 @@ function loadPreviousState(doneCallback) {
   tasks.push(function(callback) {
     diskState.getVars(function(rows) {
       rows.forEach(function(varRow) {
-   switch(varRow.Name) {
+          switch(varRow.Name) {
           case 'bytes':
             uploadCounts.totalBytes = parseInt(varRow.Value);
             break;
@@ -609,7 +609,7 @@ function formatPathProgress(label, path, width) {
 }
 
 function putFoldersOnBox(dirs, doneCallback) {
-  async.eachLimit(dirs, 3, function(dir, callback) {
+  async.eachLimit(dirs, 1, function(dir, callback) {
     diskState.recordStart('dir', dir, function() {
       if (dir.issues.length !== 0) {
         throw new Error("BAD DIR, SHOULD NOT BE TRYING TO SYNC: " + dir.localId);
@@ -622,7 +622,7 @@ function putFoldersOnBox(dirs, doneCallback) {
 }
 
 function putFilesOnBox(files, doneCallback) {
-  async.eachLimit(files, 10, function(file, callback) {
+  async.eachLimit(files, 3, function(file, callback) {
     diskState.recordStart('file', file, function() {
       if (file.issues.length !== 0) {
         throw new Error("BAD FILE, SHOULD NOT BE TRYING TO SYNC: " + file.localFolderId);
