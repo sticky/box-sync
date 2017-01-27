@@ -52,7 +52,7 @@ function prepareStatements(callback) {
 function finishPreparing(callback) {
   stmtDir = db.prepare('INSERT OR REPLACE INTO ' + TABLE_DIRS + '(Sys_Id_Num, Parent_Id, Remote_Id, Full_Path, Name, Created, Updated) VALUES ($id, $parentId, $remoteId, $path, $name, $created, $updated);',
   [], function() {
-    stmtFile = db.prepare('INSERT OR REPLACE INTO ' + TABLE_FILES + ' (Folder_Id, Full_Path, Name, Remote_Id, Created, Updated) VALUES ($folderId, $path, $name, $remote, $created, $updated);', [], callback);
+    stmtFile = db.prepare('INSERT OR REPLACE INTO ' + TABLE_FILES + ' (Folder_Id, Full_Path, Name, Remote_Id, Created, Updated, Hash) VALUES ($folderId, $path, $name, $remote, $created, $updated, $hash);', [], callback);
   });
 }
 
@@ -159,7 +159,8 @@ function storeDirectory(id, parentId, remoteId, fullPath, name, createdStr, upda
   });
 }
 
-function storeFile(localFolderId, fullPath, name, remoteId, createdStr, updatedStr, onDoneCallback) {
+function storeFile(localFolderId, fullPath, name, remoteId, createdStr, updatedStr, hash, onDoneCallback) {
+
   var updateParams = {
     $folderId: localFolderId,
     $path: fullPath,
@@ -167,6 +168,7 @@ function storeFile(localFolderId, fullPath, name, remoteId, createdStr, updatedS
     $remote: remoteId,
     $created: createdStr,
     $updated: updatedStr,
+    $hash: hash
   };
   setForeignKeysPragma();
 
@@ -619,7 +621,7 @@ function storeWorker(properties, doneCallback) {
     case 'file':
       async.series([
         function(callback) {
-          storeFile(itemInfo.localFolderId, itemInfo.pathStr, itemInfo.name, itemInfo.remoteId, itemInfo.created, itemInfo.updated, callback);
+          storeFile(itemInfo.localFolderId, itemInfo.pathStr, itemInfo.name, itemInfo.remoteId, itemInfo.created, itemInfo.updated, itemInfo.hash, callback);
         },
         function(callback) {
           storeFileIssues(itemInfo.localFolderId, itemInfo.name, itemInfo.issues, callback);
@@ -659,7 +661,26 @@ FilesDb.loadSingleDirProgress = function(callback) {
       callback(row);
     }
   });
-}
+};
+
+FilesDb.loadFilesWithRemoteIds = function(callback) {
+  var stmt = 'SELECT * FROM ' + TABLE_FILES + ' f INNER JOIN ' + TABLE_FILE_CLASS + ' fc ';
+  stmt += 'ON f.Folder_Id = fc.Folder_Id AND f.Name = fc.File_Name ';
+  stmt += 'INNER JOIN ' + TABLE_FILE_ISSUES + ' fi ';
+  stmt += 'ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name';
+
+  stmt += ' WHERE fc.Class = ' + CLASS_ENUM['valid'] + ' AND f.Remote_Id IS NOT "unknown"';
+
+  db.all(stmt, [], function(err, rows) {
+    if (err) {
+      throw new Error("Db.loadFiles error: " + err);
+    }
+
+    if (callback) {
+      callback.call(this, rows);
+    }
+  });
+};
 
 FilesDb.loadAll = function(type, classification, callback) {
   switch(type) {

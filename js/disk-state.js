@@ -29,6 +29,7 @@ function dbRowToFile(row, shouldCache) {
     name: row.Name,
     updated: row.Updated,
     created: row.Created,
+    remote: row.Remote_Id,
     problems: getRowIssues(row)
   };
 
@@ -192,6 +193,21 @@ DiskState.prototype.getIncompleteDirs = function(completeCallback) {
     }
     dir = [dbRowToDir(row)];
     completeCallback(dir);
+  });
+};
+
+DiskState.prototype.getUploadedFiles = function(completeCallback) {
+  FileDb.loadFilesWithRemoteIds(function(rows) {
+    var files = [];
+    if (!rows) {
+      completeCallback(null);
+      return;
+    }
+
+    rows.forEach(function(row) {
+      files.push(dbRowToFile(row));
+    });
+    completeCallback(files);
   });
 };
 

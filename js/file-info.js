@@ -9,6 +9,7 @@ function FileInfo (opts) {
   this.line = opts.line;
   this.updated = opts.updated;
   this.created = opts.created;
+  this.hash = opts.hash;
 }
 
 module.exports = FileInfo;

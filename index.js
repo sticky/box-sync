@@ -3,6 +3,7 @@
 var fs = require('fs');
 var program = require('commander');
 var async = require("async");
+var crypto = require('crypto');
 
 var UI = require('./js/ConsoleOutput.js');
 var BoxUploader = require('./js/box-uploader.js');
@@ -273,16 +274,60 @@ function generalErrorTouchup(error) {
 }
 
 function beginUploading(callback) {
-  if (!program.onlyValidate) {
-    UI.startDisplay('upload');
-    UI.updateUploading({totalBytes: uploadCounts.totalBytes, start: Date.now()});
-    createBoxContent(function() {
-      UI.stopDisplay('uploading');
-      callback();
-      console.log("Totally done with creating box content!");
-    });
-  }
+  UI.startDisplay('upload');
+  UI.updateUploading({totalBytes: uploadCounts.totalBytes, start: Date.now()});
+  createBoxContent(function() {
+    UI.stopDisplay('uploading');
+    callback();
+    console.log("Totally done with creating box content!");
+  });
 };
+
+
+// An earlier version didn't store hashes to the DB.
+function collectAndStoreFileHashes(callback) {
+  diskState.getUploadedFiles(function(files) {
+    async.eachLimit(files, 1, function(file, cb) {
+      getFileHash(file, function(err, hash) {
+        repairAndConfirmStoredHash(file, hash, cb);
+      });
+    }, function() {
+      callback();
+    });
+  });
+};
+
+function repairAndConfirmStoredHash(file, hash, callback) {
+  getBoxFileInfo(file, {fields: 'sha1'}, function(err, response) {
+    var error;
+    if (err) {
+      throw new Error("Unexpected CompareHash error:" + err);
+    }
+    if (hash !== response.sha1) {
+      error = new Error("File Hash and Remote Hash did not match.");
+      error.statusCode = 'CUST';
+      diskState.storeFileError(file, error, response, callback);
+      console.log("storing error", file.name);
+    } else {
+      file.hash = hash;
+      diskState.storeFile('valid', file, callback);
+    }
+  });
+};
+
+function getFileHash(file, callback) {
+var hash = crypto.createHash('sha1');
+  var fullFileName = file.pathStr + '/' + file.name;
+  var stream = fs.createReadStream(fullFileName);
+  stream.on('data', function (data) {
+    hash.update(data, 'utf8');
+  });
+
+  stream.on('end', function () {
+    var sha1 = hash.digest('hex');
+    callback(null, sha1);
+  });
+}
 
 callbacks.onFileData = function(chunk) {
   uploadCounts.bytes += chunk.length;
@@ -308,6 +353,10 @@ function createBoxContent(callback) {
       createBoxContent(callback);
     });
   });
+}
+
+function getBoxFileInfo(localFile, query, callback) {
+  uploader.getFileInfo(localFile, query, callback);
 }
 
 function uploadDirectory(dir, onDone) {
@@ -352,6 +401,7 @@ program
   .option('-n, --assume-new', 'Completely ignore results from previous runs.')
   .option('-r, --redo', 'Try to upload all files, ignoring previous upload attempts.')
   .option('-f, --fix-errors', 'Try to fix errors encountered on a previous upload attempt.')
+  .option('-d, --development', 'Focus on what is being developed (do not use unless you know what you are doing.')
   .action(function(source, dest) {
     console.log("SOURCE", source);
     var freshStart = program.assumeNew ? true : false;
@@ -375,6 +425,14 @@ function onFdInitalized(source, freshStart) {
   } else if (!program.onlyValidate) {
     tasks.push(loadPreviousState);
 
+    if (program.development) {
+      console.log("focusing on dev feature.");
+      tasks.push(function(cb) {
+        collectAndStoreFileHashes(cb);
+      });
+    }
+
+
     if (program.fixErrors) {
       throw new Error("Fixing errors not implemented!");
     }
@@ -386,9 +444,13 @@ function onFdInitalized(source, freshStart) {
     tasks.push(function(cb) {
       diskState.recordVar('nada', 0, cb);
     });
-    tasks.push(function(cb) {
-     beginUploading(cb);
-     });
+
+    if (!program.onlyValidate) {
+      /*tasks.push(function(cb) {
+        beginUploading(cb);
+      }); */
+    }
+
   }
 
   async.series(tasks,function(err) {

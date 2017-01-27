@@ -88,6 +88,21 @@ function putFileOnBox(file, streamHandlers, itemComplete, doneCallback) {
   });
 }
 
+function getFileInfo(file, query, doneCallback) {
+  var self = this;
+  var info;
+  async.series([
+    function(cb) {
+      self.client.files.get(file.remoteId, query, function(err, response) {
+        info = response;
+        cb(err);
+      });
+    },
+  ], function(err) {
+    doneCallback(err, info);
+  });
+}
+
 function getBoxFolderContents(boxId, offset, callback) {
   var qs = {
     offset: offset ? offset: 0,
@@ -139,6 +154,9 @@ BoxUploader.prototype.makeFile = function(file, streamHandlers, onFileComplete, 
 };
 BoxUploader.prototype.getDirContents = function(boxId, offset, callback) {
   getBoxFolderContents.call(this, boxId, offset, callback);
+};
+BoxUploader.prototype.getFileInfo = function(file, query, callback) {
+  getFileInfo.call(this, file, query, callback);
 };
 
 module.exports = BoxUploader;
