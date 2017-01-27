@@ -33,13 +33,19 @@ function setForeignKeysPragma(callback) {
   db.run('PRAGMA foreign_keys = true;', callback);
 }
 function prepareStatements(callback) {
+  function failureCheck(err) {
+    if (err) {
+      throw new Error("Prepared failed:" + err);
+    }
+    callback();
+  }
   var needTofinal = false;
   if (stmtDir || stmtFile) {
     finalizeStatements(function() {
-      finishPreparing(callback);
+      finishPreparing(failureCheck);
     });
   } else {
-    finishPreparing(callback);
+    finishPreparing(failureCheck);
   }
 }
 
