@@ -39,8 +39,8 @@ function putFileOnBox(file, streamHandlers, itemComplete, doneCallback) {
   var self = this;
   var fullFileName = file.pathStr + '/' + file.name;
   var fsStat = fs.statSync(fullFileName);
-  var ctime = new Date(fsStat.ctime);
-  var mtime = new Date(fsStat.mtime);
+  var ctime = new Date(file.created);
+  var mtime = new Date(file.updated);
 
   if (!fsStat.isFile()) {
     throw new Error('Uploader.putFileOnBox::: Not a file. (' + fullFileName + ')');

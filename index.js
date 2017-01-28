@@ -95,6 +95,7 @@ callbacks.onBadFile = function (fileInfo, callback) {
 callbacks.onValidDir = function (dirInfo, callback) {
   var cols = UI.getStrWidth();
   validCounts.read += 1;
+
   diskState.storeDir('valid', dirInfo, function(err) {
     if (err) {
       throw err;
@@ -437,7 +438,6 @@ function onFdInitalized(source, freshStart) {
       throw new Error("Fixing errors not implemented!");
     }
 
-
     // A switch to parallel behavior could make the DB class explode because its statement preparation
     // is not parallel safe.
     // Do one non-parallel call to storage to get those statements prepared.
@@ -446,9 +446,9 @@ function onFdInitalized(source, freshStart) {
     });
 
     if (!program.onlyValidate) {
-      /*tasks.push(function(cb) {
+      tasks.push(function(cb) {
         beginUploading(cb);
-      }); */
+      });
     }
 
   }
@@ -686,10 +686,22 @@ function putFoldersOnBox(dirs, doneCallback) {
 function putFilesOnBox(files, doneCallback) {
   async.eachLimit(files, 3, function(file, callback) {
     diskState.recordStart('file', file, function() {
-      if (file.issues.length !== 0) {
-        throw new Error("BAD FILE, SHOULD NOT BE TRYING TO SYNC: " + file.localFolderId);
-      }
-      uploader.makeFile(file, {data: callbacks.onFileData, end: callbacks.onFileEnd}, callbacks.onFileComplete, callback);
+
+      getFileHash(file, function(err, hash) {
+        // We're getting the created and modified time now, just before the upload, just to keep
+        // everything up to date.
+        var fullFileName = file.pathStr + '/' + file.name;
+        var fsStat = fs.statSync(fullFileName);
+        file.updated = fsStat.mtime;
+        file.created = fsStat.ctime;
+        file.hash = hash;
+
+        if (file.issues.length !== 0) {
+          throw new Error("BAD FILE, SHOULD NOT BE TRYING TO SYNC: " + file.localFolderId);
+        }
+        uploader.makeFile(file, {data: callbacks.onFileData, end: callbacks.onFileEnd}, callbacks.onFileComplete, callback);
+      });
+
     });
   }, function() {
     doneCallback();

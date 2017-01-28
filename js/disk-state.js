@@ -35,23 +35,11 @@ function dbRowToFile(row, shouldCache) {
 
   var newFile = new StickyFile(fileOpts);
 
-  // Initial dev versions weren't keeping track of this in the DB.
-  if (row.Updated === 'MISSING' || row.Created === 'MISSING') {
-    fixItemTimestamps(newFile);
-  }
-
   if (shouldCache) {
     fileCache[fileHash(newFile)] = newFile;
   }
 
   return newFile;
-}
-
-function fixItemTimestamps(file) {
-  var fullFileName = file.pathStr + '/' + file.name;
-  var fsStat = fs.statSync(fullFileName);
-  file.created = Util.dateToBoxDateString(new Date(fsStat.ctime));
-  file.updated = Util.dateToBoxDateString(new Date(fsStat.mtime));
 }
 
 function dbRowToDir(row, shouldCache) {
@@ -66,11 +54,6 @@ function dbRowToDir(row, shouldCache) {
     problems: getRowIssues(row),
   };
   var newDir = new StickyDir(fileOpts);
-
-  // Initial dev versions weren't keeping track of this in the DB.
-  if (row.Updated === 'MISSING' || row.Created === 'MISSING') {
-    fixItemTimestamps(newDir);
-  }
 
   if (shouldCache) {
     dirCache[newDir.inode] = newDir;
