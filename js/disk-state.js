@@ -162,6 +162,30 @@ DiskState.prototype.loadDirs = function(classification, completeCallback) {
   });
 };
 
+DiskState.prototype.getDirFailures = function(completeCallback) {
+  var self = this;
+  var failures = {};
+  FileDb.loadFailures('dir', function(rows) {
+    rows.forEach(function(row) {
+      var dir = dbRowToDir(row);
+      // Add some additional informational pieces to the default dir info.
+      dir.errCode = row.Error_Code;
+      dir.errText = row.Error_Blob;
+
+      if (!failures[dir.errCode]) {
+        failures[dir.errCode] = [];
+      }
+      failures[dir.errCode].push(dir);
+
+    });
+    completeCallback(null, failures);
+  });
+};
+
+DiskState.prototype.removeDirError = function(dirId, callback) {
+  FileDb.removeDirError(dirId, callback);
+};
+
 DiskState.prototype.getIncompleteDirs = function(completeCallback) {
   var self = this;
   FileDb.loadSingleDirProgress(function(row) {
@@ -253,6 +277,7 @@ DiskState.prototype.getFilesInDir = function(dir, callback) {
     callback(files);
   });
 };
+
 
 DiskState.prototype.recordStart = function(type, item, callback) {
   switch(type) {

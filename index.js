@@ -302,7 +302,7 @@ function repairAndConfirmStoredHash(file, hash, callback) {
   getBoxFileInfo(file, {fields: 'sha1'}, function(err, response) {
     var error;
     if (err) {
-      throw new Error("Unexpected CompareHash error:" + err);
+      throw new Error("Unexpected CompareHash error for file :" + file.pathStr + '/' + file.name + "; error was: " + err);
     }
     if (hash !== response.sha1) {
       error = new Error("File Hash and Remote Hash did not match.");
@@ -392,6 +392,34 @@ function uploadDirectory(dir, onDone) {
   });
 }
 
+function tryFixingErrors(callback) {
+  diskState.getDirFailures(function(err, failureGroups) {
+    if (err) {
+      throw new Error("Failure while trying to get failed directories: " + err);
+    }
+    async.eachLimit(failureGroups, 1, function(group, cb) {
+      tryToFixErrorBatch(group, cb);
+    }, callback);
+  });
+}
+
+function tryToFixErrorBatch(failedDirs, callback) {
+  async.eachLimit(failedDirs, 1, function(failedDir, cb) {
+    // The fix error function needs this structure for... reasons?
+    var fixerInfo = {dir: failedDir};
+    if (!ErrorFixer.canFixError('dir', failedDir.errCode, failedDir.errText)) {
+      //console.log("couldn't fix issue.  Code: " +  failedDir.errCode);
+      cb();
+      return;
+    }
+
+    ErrorFixer.fixError('dir', fixerInfo, failedDir.errCode, cb);
+  }, function() {
+    console.log("done with batch");
+    callback();
+  });
+}
+
 // File descriptors
 var fds = {ignoredFiles: null};
 
@@ -433,11 +461,6 @@ function onFdInitalized(source, freshStart) {
       });
     }
 
-
-    if (program.fixErrors) {
-      throw new Error("Fixing errors not implemented!");
-    }
-
     // A switch to parallel behavior could make the DB class explode because its statement preparation
     // is not parallel safe.
     // Do one non-parallel call to storage to get those statements prepared.
@@ -445,20 +468,26 @@ function onFdInitalized(source, freshStart) {
       diskState.recordVar('nada', 0, cb);
     });
 
+    if (program.fixErrors) {
+      tasks.push(function(cb) {
+        tryFixingErrors(cb);
+      });
+      startProgramTasks(tasks, closeFiles);
+      return;
+    }
+
     if (!program.onlyValidate) {
       tasks.push(function(cb) {
         beginUploading(cb);
       });
     }
+    startProgramTasks(tasks, closeFiles);
 
   }
+}
 
-  async.series(tasks,function(err) {
-    if (err) {
-      throw err;
-    }
-    closeFiles();
-  });
+function startProgramTasks(tasks, finalCallback) {
+  async.series(tasks, finalCallback);
 }
 
 function runValidation(source, callback) {

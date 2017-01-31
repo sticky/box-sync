@@ -135,6 +135,72 @@ function createZipofDirAndSaveToStorage(issueInfo, callback) {
   archive.finalize();
 }
 
+function dirRetryDone(dir, err, response, callback) {
+  if (err) {
+    // Don't totally remove existing error information.  Enhance the information a little.
+    err.statusCode = "retry-" + dir.errCode + "-[" + err.statusCode + "]";
+    err.message = "failed to retry during fix of error '" + dir.errText + "'.  New error: " + err.message;
+    store.storeDirError(dir, err, response, function(err) {
+      callback(err);
+    });
+  } else {
+    store.removeDirError(dir.localId, function(err) {
+      callback(err);
+    });
+  }
+}
+
+function retryBadUpload(issueInfo, callback) {
+  var dir = issueInfo.dir;
+  console.log("re-uploading:", issueInfo);
+  async.series([
+    function (cb) {
+      store.recordStart('dir', dir, cb);
+    },
+    function (cb) {
+      uploader.makeDir(dir, dirRetryDone, cb);
+    },
+    function(cb) {
+      store.recordCompletion('dir', dir, cb);
+    }
+  ], function() {
+    console.log("done retrying upload.");
+    callback();
+  });
+}
+
+function isfixableDirError(errorNum, errorText) {
+  console.log("error info given", errorNum);
+  if (errorNum == 409 || errorNum == 'pre-409') {
+    return true;
+  }
+
+  if (errorNum == 503) {
+    return true;
+  }
+
+  return false;
+}
+
+function fixDirError(info, errorNum, callback) {
+  if (errorNum == 409 || errorNum == 'pre-409') {
+    correctDirRemoteId(info, function(err) {
+      if (err && err.message === BOX_ITEM_NOT_FOLDER) {
+        // This is probably because a mac app bundle has been uploaded through other means.  But maybe not?  Upload a zip file
+        // of this folder just in case.
+        createZipofDirAndSaveToStorage(info, callback);
+      } else {
+        callback(err);
+      }
+    });
+  } else if (errorNum == 503) {
+    console.log("Retying");
+    retryBadUpload(info, callback);
+  } else {
+    callback(new Error("Did not recognize error information during fix attempt: " + errorNum));
+  }
+}
+
 ErrorFixer.setBoxUploader = function(box) {
   uploader = box;
 };
@@ -155,9 +221,7 @@ ErrorFixer.canFixIssue = function() {
 ErrorFixer.canFixError = function(type, errorNum, errorMsg) {
   switch(type) {
     case 'dir':
-      if (errorNum == 409 || errorNum == 'pre-409') {
-        return true;
-      }
+      return isfixableDirError(errorNum, errorMsg);
       break;
     case 'file':
       break;
@@ -171,17 +235,7 @@ ErrorFixer.canFixError = function(type, errorNum, errorMsg) {
 ErrorFixer.fixError = function(type, info, errorNum, callback) {
   switch(type) {
     case 'dir':
-      if (errorNum == 409 || errorNum == 'pre-409') {
-        correctDirRemoteId(info, function(err) {
-          if (err && err.message === BOX_ITEM_NOT_FOLDER) {
-            // This is probably because a mac app bundle has been uploaded through other means.  But maybe not?  Upload a zip file
-            // of this folder just in case.
-            createZipofDirAndSaveToStorage(info, callback);
-          } else {
-            callback(err);
-          }
-        });
-      }
+      fixDirError(info, errorNum, callback);
       break;
     case 'file':
 
@@ -189,4 +243,4 @@ ErrorFixer.fixError = function(type, info, errorNum, callback) {
     default:
       throw new Error("fixError:: Unrecognized error type");
   }
-}
+};

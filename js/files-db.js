@@ -519,6 +519,26 @@ function storeDirectoryFailure(dirId, errNum, errTxt, onFinish) {
   });
 }
 
+function removeDirectoryFailure(dirNum, onFinish) {
+  var mainTable = TABLE_DIR_ERROR;
+  var deleteStr = 'DELETE FROM ';
+  var whereStr = ' WHERE Dir_Id_Num IS $dirNum;';
+  var params = {
+    $dirNum: dirNum
+  };
+
+  setForeignKeysPragma();
+
+  db.run(deleteStr + mainTable + whereStr, params, function(err) {
+    if (err) {
+      throw new Error("Db.delete dir failure error: " + err);
+    }
+    if (onFinish) {
+      onFinish();
+    }
+  });
+}
+
 function storeFileFailure(dirId, fileName, errNum, errTxt, onFinish) {
   var mainTable = TABLE_FILE_ERROR;
   var updateParams = {
@@ -537,6 +557,18 @@ function storeFileFailure(dirId, fileName, errNum, errTxt, onFinish) {
     }
     if (onFinish) {
       onFinish();
+    }
+  });
+}
+
+function loadDirFailures(onFinish) {
+  var query = 'SELECT * FROM Directories d JOIN Directory_Issues di ON d.Sys_Id_Num = di.DirId JOIN Directory_Class dc ON d.Sys_Id_Num = dc.Dir_Id JOIN Directory_Failures df ON d.Sys_Id_Num = df.Dir_Id_Num';
+  db.all(query, [], function(err, rows) {
+    if (err) {
+      throw new Error("Db.loadDirFailures failure error: [" + query + "]; " + err);
+    }
+    if (onFinish) {
+      onFinish(rows);
     }
   });
 }
@@ -685,7 +717,7 @@ FilesDb.loadFilesWithRemoteIds = function(callback) {
 FilesDb.loadAll = function(type, classification, callback) {
   switch(type) {
     case 'file':
-        loadFiles(classification, callback);
+      loadFiles(classification, callback);
       break;
     case 'dir':
       loadDirs(classification, callback);
@@ -693,6 +725,16 @@ FilesDb.loadAll = function(type, classification, callback) {
     case 'var':
       loadVars(callback);
       break;
+  }
+};
+
+FilesDb.loadFailures = function(type, callback) {
+  switch(type) {
+    case 'dir':
+      loadDirFailures(callback);
+      break;
+    default:
+      return callback(new Error("LoadFailures error: Unrecognized type (" + type + ")"));
   }
 };
 
@@ -723,6 +765,10 @@ FilesDb.storeDirError = function(dirNum, errorNum, errorText, callback) {
 };
 FilesDb.storeFileError = function(fileFolderId, fileName, errorNum, errorText, callback) {
   storeFileFailure(fileFolderId, fileName, errorNum, errorText, callback);
+};
+
+FilesDb.removeDirError = function(dirNum, callback) {
+  removeDirectoryFailure(dirNum, callback);
 };
 
 process.on('SIGINT', function() {
