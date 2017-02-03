@@ -169,7 +169,8 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
         callbacks.onFolderError(dir, error, response, completeCallback);
       } else {
         uploadCounts.goodDirs += 1;
-        callback();
+        // This might be a retry; clear out stored error information.
+        diskState.removeDirError(dir.localId, callback);
       }
     },
     function(callback) {
@@ -427,6 +428,7 @@ function retryErroredDirectories(callback) {
 
 function retryErroredFiles(callback) {
   console.log("retrying error files (unimplemented)");
+  callback();
 }
 
 function retryDir503s(dirs, callback) {
