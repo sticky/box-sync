@@ -18,5 +18,22 @@ module.exports = {
       ':' + pad(date.getUTCMinutes()) +
       ':' + pad(date.getUTCSeconds()) +
       'Z';
+  },
+  generalErrorTouchup: function(error) {
+    if (!error.statusCode) {
+      error.statusCode = 'SYS';
+    }
+
+
+    // We don't want to keep trying if we're not even authenticated correctly.
+    // But try to avoid other random "bad request" messages.
+    // It should always be 401, but this was seen as 400 during development, as well.
+    var possibleAuthIssue = error.statusCode == 400 || error.statusCode == 'pre-400' || error.statusCode == 401 || error.statusCode == 'pre-401';
+
+    if (possibleAuthIssue) {
+      if (error.message.includes('Auth') || error.message.includes('auth')) {
+        throw new Error("Possible authentication failure  Server response: " + error.message);
+      }
+    }
   }
 };

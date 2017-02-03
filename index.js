@@ -11,6 +11,7 @@ var StickyFileInfo = require('./js/file-info');
 var StickyDirInfo = require('./js/dir-info');
 var DiskState = require('./js/disk-state');
 var ErrorFixer = require('./js/error-fixer');
+var utils = require('./js/util');
 
 var validator = require('./js/filename-validator');
 
@@ -199,7 +200,7 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
 
 callbacks.onFolderError = function(dir, error, response, completeCallback) {
   var info = {};
-  generalErrorTouchup(error);
+  utils.generalErrorTouchup(error);
   if (ErrorFixer.canFixError('dir', error.statusCode, error.message)) {
     info.error = error;
     info.dir = dir;
@@ -224,7 +225,7 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
   async.series([
     function(callback) {
       if (error) {
-        generalErrorTouchup(error);
+        utils.generalErrorTouchup(error);
         uploadCounts.badFiles += 1;
         diskState.storeFileError(file, error, response, callback);
       } else {
@@ -258,20 +259,6 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
     }
     completeCallback();
   });
-}
-
-function generalErrorTouchup(error) {
-  if (!error.statusCode) {
-    error.statusCode = 'SYS';
-  }
-
-  // We don't want to keep trying if we're not even authenticated correctly.
-  // But try to avoid other random 400 "bad request" messages.
-  if (error.statusCode == 400 || error.statusCode == 'pre-400') {
-    if (error.message.includes('Auth') || error.message.includes('auth')) {
-      throw new Error("Possible authentication failure  Server response: " + error.message);
-    }
-  }
 }
 
 function beginUploading(callback) {
