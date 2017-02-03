@@ -379,31 +379,96 @@ function uploadDirectory(dir, onDone) {
   });
 }
 
-function tryFixingErrors(callback) {
-  diskState.getDirFailures(function(err, failureGroups) {
-    if (err) {
-      throw new Error("Failure while trying to get failed directories: " + err);
-    }
-    async.eachLimit(failureGroups, 1, function(group, cb) {
-      tryToFixErrorBatch(group, cb);
-    }, callback);
+
+function retryErroredContent(callback) {
+  var tasks = [];
+
+  tasks.push(retryErroredDirectories);
+  tasks.push(retryErroredFiles);
+
+  async.series(tasks, function() {
+    callback();
   });
 }
 
-function tryToFixErrorBatch(failedDirs, callback) {
-  async.eachLimit(failedDirs, 1, function(failedDir, cb) {
-    // The fix error function needs this structure for... reasons?
-    var fixerInfo = {dir: failedDir};
-    if (!ErrorFixer.canFixError('dir', failedDir.errCode, failedDir.errText)) {
-      //console.log("couldn't fix issue.  Code: " +  failedDir.errCode);
-      cb();
+function retryErroredDirectories(callback) {
+  diskState.getDirFailures(function(err, failureGroups) {
+    var tasks = [];
+    if (err) {
+      throw new Error("Failure while trying to get failed directories: " + err);
+    }
+
+    //console.log("groups", failureGroups);
+
+    if (!failureGroups) {
+      callback();
       return;
     }
 
-    ErrorFixer.fixError('dir', fixerInfo, failedDir.errCode, cb);
-  }, function() {
-    console.log("done with batch");
+    if (failureGroups['503']) {
+      tasks.push(function(cb) {
+        retryDir503s(failureGroups['503'], cb);
+      });
+    }
+
+    // If error 503ss have been fixed, perhaps we can retry those 404s now!
+    if (failureGroups['404']) {
+      tasks.push(function(cb) {
+        retryDir404s(failureGroups['404'], cb);
+      });
+    }
+
+    async.series(tasks, function() {
+      console.log("done with tasks");
+      callback();
+    });
+  });
+}
+
+function retryErroredFiles(callback) {
+  console.log("retrying error files (unimplemented)");
+}
+
+function retryDir503s(dirs, callback) {
+  putFoldersOnBox(dirs, function(err) {
+
     callback();
+  });
+}
+
+function retryDir404s(dirs, callback) {
+  putFoldersOnBox(dirs, callback);
+}
+
+function uploadFiledDir(dir, onDone) {
+  var realDir = dir.localId !== 'noparent';
+  async.series([
+    function(callback) {
+      if (realDir) {
+        diskState.recordStart('dir', dir, callback);
+      } else {
+        callback();
+      }
+    },
+    function(callback) {
+      diskState.getFilesInDir(dir, function(files) {
+        putFilesOnBox(files, callback);
+      });
+    },
+    function(callback) {
+      diskState.getDirsInDir(dir, function(dirs) {
+        putFoldersOnBox(dirs, callback);
+      });
+    },
+  ], function(err) {
+    if (err) {
+      throw new Error(err);
+    }
+
+    if (realDir) {
+      diskState.recordCompletion('dir', dir);
+    }
+    onDone();
   });
 }
 
@@ -457,7 +522,7 @@ function onFdInitalized(source, freshStart) {
 
     if (program.fixErrors) {
       tasks.push(function(cb) {
-        tryFixingErrors(cb);
+        retryErroredContent(cb);
       });
       startProgramTasks(tasks, closeFiles);
       return;
