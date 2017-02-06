@@ -520,6 +520,7 @@ function storeDirectoryFailure(dirId, errNum, errTxt, onFinish) {
 }
 
 function removeDirectoryFailure(dirNum, onFinish) {
+  console.log("removing dir error");
   var mainTable = TABLE_DIR_ERROR;
   var deleteStr = 'DELETE FROM ';
   var whereStr = ' WHERE Dir_Id_Num IS $dirNum;';
@@ -532,6 +533,28 @@ function removeDirectoryFailure(dirNum, onFinish) {
   db.run(deleteStr + mainTable + whereStr, params, function(err) {
     if (err) {
       throw new Error("Db.delete dir failure error: " + err);
+    }
+    if (onFinish) {
+      onFinish();
+    }
+  });
+}
+
+function removeFileFailure(folderId, filename, onFinish) {
+  console.log("removing file error");
+  var mainTable = TABLE_FILE_ERROR;
+  var deleteStr = 'DELETE FROM ';
+  var whereStr = ' WHERE Folder_Id IS $folderId AND Name IS $name;';
+  var params = {
+    $folderId: folderId,
+    $name: filename
+  };
+
+  setForeignKeysPragma();
+
+  db.run(deleteStr + mainTable + whereStr, params, function(err) {
+    if (err) {
+      throw new Error("Db.delete file failure error: " + err);
     }
     if (onFinish) {
       onFinish();
@@ -769,6 +792,10 @@ FilesDb.storeFileError = function(fileFolderId, fileName, errorNum, errorText, c
 
 FilesDb.removeDirError = function(dirNum, callback) {
   removeDirectoryFailure(dirNum, callback);
+};
+
+FilesDb.removeFileError = function(folderId, filename, callback) {
+  removeFileFailure(folderId, filename, callback);
 };
 
 process.on('SIGINT', function() {

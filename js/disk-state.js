@@ -186,6 +186,10 @@ DiskState.prototype.removeDirError = function(dirId, callback) {
   FileDb.removeDirError(dirId, callback);
 };
 
+DiskState.prototype.removeFileError = function(folderId, name, callback) {
+  FileDb.removeFileError(folderId, name, callback);
+};
+
 DiskState.prototype.getIncompleteDirs = function(completeCallback) {
   var self = this;
   FileDb.loadSingleDirProgress(function(row) {
