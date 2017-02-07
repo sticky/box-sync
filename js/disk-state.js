@@ -134,6 +134,7 @@ DiskState.prototype.storeFile = function(classification, fileInfo, doneCallback)
 };
 
 DiskState.prototype.storeDirError = function(dir, err, response, callback) {
+  console.log("storing dir error", err);
   FileDb.storeDirError(dir.localId, err.statusCode, err.message, callback);
 };
 
@@ -204,6 +205,23 @@ DiskState.prototype.getIncompleteDirs = function(completeCallback) {
     }
     dir = [dbRowToDir(row)];
     completeCallback(dir);
+  });
+};
+
+// Are there perfectly valid, error-free directories without a remote ID?
+DiskState.prototype.getRemotelessDirs = function(completeCallback) {
+  var self = this;
+  FileDb.loadDirsWithoutRemoteIds(function(rows) {
+    var dirs = [];
+    if (!rows) {
+      completeCallback(null);
+      return;
+    }
+
+    rows.forEach(function(row) {
+      dirs.push(dbRowToDir(row));
+    });
+    completeCallback(null, dirs);
   });
 };
 

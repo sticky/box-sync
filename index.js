@@ -158,10 +158,12 @@ callbacks.onCategorizeComplete = function(callback) {
   });
 }
 
+// The attempt to make a folder has finished.
 callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
   if (response) {
     dir.remoteId = response.id;
   }
+
   async.series([
     function(callback) {
       if (error) {
@@ -211,7 +213,7 @@ callbacks.onFolderError = function(dir, error, response, completeCallback) {
       }
       uploadCounts.fixedDirs += 1;
       uploadCounts.badDirs -= 1;
-      completeCallback();
+      diskState.storeDir('valid', dir, completeCallback);
     });
   } else {
     UI.updateUploading({fDirs: uploadCounts.badDirs, sDirs: uploadCounts.goodDirs, fixedDirs: uploadCounts.fixedDirs});
@@ -350,6 +352,7 @@ function getBoxFileInfo(localFile, query, callback) {
 }
 
 function uploadDirectory(dir, onDone) {
+  console.log("uplading dir");
   var realDir = dir.localId !== 'noparent';
   async.series([
     function(callback) {
@@ -385,6 +388,8 @@ function uploadDirectory(dir, onDone) {
 function retryErroredContent(callback) {
   var tasks = [];
 
+
+  tasks.push(retryMissedDirectories);
   tasks.push(retryErroredDirectories);
   tasks.push(retryErroredFiles);
 
@@ -427,6 +432,27 @@ function retryErroredDirectories(callback) {
   });
 }
 
+function retryMissedDirectories(callback) {
+  console.log("retrying missed dirs");
+  diskState.getRemotelessDirs(function(err, dirs) {
+    // We need to explicitly create the 503'd directories first, and then try to upload all of the dependant items using the recursive
+    // upload approach used in the regular approach.
+    putFoldersOnBox(dirs, function (err) {
+      if (err) {
+        // Errors should be caught by now.  If they haven't been, we need to stop.
+        throw err;
+      }
+      async.eachSeries(dirs, uploadDirectory, function (err) {
+        if (err) {
+          throw new Error("retryDir503s: " + err);
+        }
+        // Start business as usual.
+        createBoxContent(callback);
+      });
+    });
+  });
+}
+
 function retryErroredFiles(callback) {
   console.log("retrying error files (unimplemented)");
   callback();
@@ -452,6 +478,9 @@ function retryDir503s(dirs, callback) {
 }
 
 function retryDir404s(dirs, callback) {
+
+
+
   console.log("Not doing anything in retryDir404s yet!");
   callback();
   return;
@@ -462,38 +491,6 @@ function retryDir404s(dirs, callback) {
       throw err;
     }
     callback();
-  });
-}
-
-function uploadFiledDir(dir, onDone) {
-  var realDir = dir.localId !== 'noparent';
-  async.series([
-    function(callback) {
-      if (realDir) {
-        diskState.recordStart('dir', dir, callback);
-      } else {
-        callback();
-      }
-    },
-    function(callback) {
-      diskState.getFilesInDir(dir, function(files) {
-        putFilesOnBox(files, callback);
-      });
-    },
-    function(callback) {
-      diskState.getDirsInDir(dir, function(dirs) {
-        putFoldersOnBox(dirs, callback);
-      });
-    },
-  ], function(err) {
-    if (err) {
-      throw new Error(err);
-    }
-
-    if (realDir) {
-      diskState.recordCompletion('dir', dir);
-    }
-    onDone();
   });
 }
 

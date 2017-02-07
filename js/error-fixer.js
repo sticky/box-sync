@@ -112,6 +112,7 @@ function correctDirRemoteId(issueInfo, callback) {
 }
 
 function createZipofDirAndSaveToStorage(issueInfo, callback) {
+  console.log("Making a zip file");
   var dir = issueInfo.dir;
   var file = new FileInfo({
     localFolderId: dir.parentId,
@@ -123,10 +124,24 @@ function createZipofDirAndSaveToStorage(issueInfo, callback) {
   var archive = archiver('zip');
 
   output.on('close', function() {
-    store.storeFile('valid', file, callback);
+    console.log("zip file completed");
+    async.series([
+      function(cb) {
+        store.storeFile('valid', file, cb);
+      },
+      function(cb) {
+        // Make sure our new file doesn't get lost in the hustle and bustle.
+        store.recordStart('file', file, cb);
+      },
+      function (cb) {
+        dir.remoteId = 'zipfile';
+        store.storeDir('valid', dir, cb);
+      }
+    ], callback);
   });
 
   archive.on('error', function(err) {
+    console.error("error during zip file");
     throw err;
   });
 
@@ -184,11 +199,16 @@ function isfixableDirError(errorNum, errorText) {
 
 function fixDirError(info, errorNum, callback) {
   if (errorNum == 409 || errorNum == 'pre-409') {
+    console.log("fixing error 409");
     correctDirRemoteId(info, function(err) {
       if (err && err.message === BOX_ITEM_NOT_FOLDER) {
+        console.log("trying to fix folder conflict");
         // This is probably because a mac app bundle has been uploaded through other means.  But maybe not?  Upload a zip file
         // of this folder just in case.
-        createZipofDirAndSaveToStorage(info, callback);
+        createZipofDirAndSaveToStorage(info, function(err) {
+
+          callback();
+        });
       } else {
         callback(err);
       }

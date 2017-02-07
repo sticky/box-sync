@@ -596,6 +596,18 @@ function loadDirFailures(onFinish) {
   });
 }
 
+function loadDirsMissingRemoteIds(onFinish) {
+  var query = "SELECT * FROM Directories d JOIN Directory_Issues di ON d.Sys_Id_Num = di.DirId LEFT JOIN Directory_Failures df ON d.Sys_Id_Num = df.Dir_id_Num LEFT JOIN Directory_Progress dp ON d.Sys_Id_Num = dp.Dir_Id WHERE df.Error_Code IS NULL AND d.Remote_ID IS  'unknown' AND (di.Long IS 0 AND di.Chars IS 0 AND di.Spaces IS 0) AND Done IS NOT NULL";
+  db.all(query, [], function(err, rows) {
+    if (err) {
+      throw new Error("Db.loadDirsMissingRemoteIds failure error: [" + query + "]; " + err);
+    }
+    if (onFinish) {
+      onFinish(rows);
+    }
+  });
+}
+
 function storeVar(name, value, onFinish) {
   var updateParams = {
     $name: name,
@@ -773,6 +785,11 @@ FilesDb.loadDirsFrom = function(dirId, classification, doneCallback) {
 
 FilesDb.loadFilesFrom = function(dirId, classification, doneCallback) {
   loadDirContents(dirId, 'file', classification, doneCallback);
+};
+
+// These directories don't have remote Ids... but should have.
+FilesDb.loadDirsWithoutRemoteIds = function(callback) {
+  loadDirsMissingRemoteIds(callback);
 };
 
 FilesDb.storeDirProgress = function(dir, value, callback) {
