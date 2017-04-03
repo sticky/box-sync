@@ -85,7 +85,7 @@ function DiskState() {
   this.bad = INIT_BADS;
 }
 
-DiskState.prototype.getCounts = function() {
+DiskState.prototype.getCurrentValidatorCounts = function() {
   var stats = {
     validFiles: this.valid.files.length,
     validDirs: this.valid.dirs.length,
@@ -147,6 +147,27 @@ DiskState.prototype.storeFileError = function(file, err, response, callback) {
 
 DiskState.prototype.loadDirs = function(classification, completeCallback) {
   var self = this;
+
+
+  // Since there is no uniqueness being enforced in our arrays of files and dirs, we need to
+  // purge the lists and start from scratch.
+  switch(classification) {
+    case 'valid':
+      self.valid.dirs = [];
+      break;
+    case 'invalid':
+      self.bad.dirs = [];
+      break;
+    case null:
+    case undefined:
+      self.valid.dirs = [];
+      self.bad.dirs = [];
+      break;
+    default:
+      completeCallback(new Error("DiskState.loadFiles:: Invalid classification:" + classification));
+      return;
+  }
+
   FileDb.loadAll('dir', classification, function(rows) {
     rows.forEach(function(row) {
       var dir = dbRowToDir(row);
@@ -242,6 +263,26 @@ DiskState.prototype.getUploadedFiles = function(completeCallback) {
 
 DiskState.prototype.loadFiles = function(classification, completeCallback) {
   var self = this;
+
+  // Since there is no uniqueness being enforced in our arrays of files and dirs, we need to
+  // purge the lists and start from scratch.
+  switch(classification) {
+    case 'valid':
+      self.valid.files = [];
+      break;
+    case 'invalid':
+      self.bad.files = [];
+      break;
+    case null:
+    case undefined:
+      self.valid.files = [];
+      self.bad.files = [];
+      break;
+    default:
+      completeCallback(new Error("DiskState.loadFiles:: Invalid classification:" + classification));
+      return;
+  }
+
   FileDb.loadAll('file', classification, function(rows) {
     rows.forEach(function(row) {
       var file = dbRowToFile.bind(self);

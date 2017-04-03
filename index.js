@@ -55,6 +55,28 @@ var uploadCounts = {
 
 var updateUiTimer;
 
+// File descriptors
+var fds = {ignoredFiles: null};
+
+program
+  .version('0.0.1')
+  .arguments('<local-dir> <box-folder>')
+  .option('-v, --only-validate', 'Only do the initial validation and categorization of the files.')
+  .option('-n, --assume-new', 'Completely ignore results from previous runs.')
+  .option('-r, --redo', 'Try to upload all files, ignoring previous upload attempts.')
+  .option('-f, --fix-errors', 'Try to fix errors encountered on a previous upload attempt.')
+  .option('-d, --development', 'Focus on what is being developed (do not use unless you know what you are doing.')
+  .action(function(source, dest) {
+    console.log("SOURCE", source);
+    var freshStart = program.assumeNew ? true : false;
+
+    uploader.rootId = dest;
+    ErrorFixer.setRootId(dest);
+
+    initializeData(freshStart, determineProgramBehaviors.bind(this, source, freshStart));
+  })
+  .parse(process.argv);
+
 callbacks.onDirectoryStarted = function (path) {
   var cols = UI.getStrWidth();
   var progressStr = formatPathProgress("", path, cols);
@@ -494,33 +516,18 @@ function retryDir404s(dirs, callback) {
   });
 }
 
-// File descriptors
-var fds = {ignoredFiles: null};
 
-program
-  .version('0.0.1')
-  .arguments('<local-dir> <box-folder>')
-  .option('-v, --only-validate', 'Only do the initial validation and categorization of the files.')
-  .option('-n, --assume-new', 'Completely ignore results from previous runs.')
-  .option('-r, --redo', 'Try to upload all files, ignoring previous upload attempts.')
-  .option('-f, --fix-errors', 'Try to fix errors encountered on a previous upload attempt.')
-  .option('-d, --development', 'Focus on what is being developed (do not use unless you know what you are doing.')
-  .action(function(source, dest) {
-    console.log("SOURCE", source);
-    var freshStart = program.assumeNew ? true : false;
-
-    uploader.rootId = dest;
-    ErrorFixer.setRootId(dest);
-
-    initializeData(freshStart, onFdInitalized.bind(this, source, freshStart));
-  })
-  .parse(process.argv);
-
-function onFdInitalized(source, freshStart) {
+function determineProgramBehaviors(source, freshStart) {
   var tasks = [];
+  var fileCounts;
 
-  /* TODO: Get Filename-Validator module async-ified so that it's safe to run a validate
-     followed immediately by the asyncrounous loadPreviousState behavior. */
+  // Considering this a fresh start if we have zero files anywhere.
+  // Being very explicit because bulldozing previous progress by accident would be really bad.
+  fileCounts = diskState.getCurrentValidatorCounts();
+  if (fileCounts.validFiles === 0 && fileCounts.badFiles === 0 && fileCounts.ignores === 0 && fileCounts.validDirs === 0 && fileCounts.badDirs === 0) {
+    freshStart = true;
+  }
+
   if (program.onlyValidate || freshStart) {
     tasks.push(function(cb) {
       runValidation(source, cb);
@@ -555,9 +562,8 @@ function onFdInitalized(source, freshStart) {
         beginUploading(cb);
       });
     }
-    startProgramTasks(tasks, closeFiles);
-
   }
+  startProgramTasks(tasks, closeFiles);
 }
 
 function startProgramTasks(tasks, finalCallback) {
@@ -760,6 +766,24 @@ function loadPreviousState(doneCallback) {
       doneCallback(null, diskState);
     }
   })
+}
+
+function loadStoredFilesAndDirs(callback) {
+  // Disk State will store file info.  Just need to load it.
+  async.series([
+      function(cb) {
+        diskState.loadFiles(null, cb);
+      },
+      function(cb) {
+        diskState.loadDirs(null, cb);
+      }],
+    function(err) {
+      if (err) {
+        throw err;
+      } else {
+        callback();
+      }
+    });
 }
 
 function formatPathProgress(label, path, width) {

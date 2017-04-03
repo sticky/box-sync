@@ -30,10 +30,20 @@ module.exports = {
     // It should always be 401, but this was seen as 400 during development, as well.
     var possibleAuthIssue = error.statusCode == 400 || error.statusCode == 'pre-400' || error.statusCode == 401 || error.statusCode == 'pre-401';
 
+    var messages = [error.message];
+    if (error.response.body && error.response.body.error) {
+      // These always go in pairs.... right?
+      messages.push(error.response.body.error);
+      messages.push(error.response.body.error_description);
+    }
+
     if (possibleAuthIssue) {
-      if (error.message.includes('Auth') || error.message.includes('auth')) {
-        throw new Error("Possible authentication failure  Server response: " + error.message);
-      }
+
+      messages.forEach(function(errorMsg) {
+        if (errorMsg.includes('Auth') || errorMsg.includes('auth') || errorMsg.includes('credentials')) {
+          throw new Error("Possible authentication failure  Server response: " + errorMsg);
+        }
+      });
     }
   }
 };
