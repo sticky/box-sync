@@ -593,6 +593,18 @@ function loadDirFailures(onFinish) {
     if (onFinish) {
       onFinish(rows);
     }
+});
+}
+
+function loadFileFailures(onFinish) {
+  var query = 'SELECT * FROM Files f JOIN File_Failures ff ON f.Folder_Id = ff.Folder_Id AND f.Name = ff.Name JOIN File_Issues fi ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name JOIN File_Class fc ON f.Folder_Id = fc.Folder_id AND f.Name = fc.File_Name';
+  db.all(query, [], function(err, rows) {
+    if (err) {
+      throw new Error("Db.loadDirFailures failure error: [" + query + "]; " + err);
+    }
+    if (onFinish) {
+      onFinish(rows);
+    }
   });
 }
 
@@ -767,6 +779,9 @@ FilesDb.loadFailures = function(type, callback) {
   switch(type) {
     case 'dir':
       loadDirFailures(callback);
+      break;
+    case 'file':
+      loadFileFailures(callback);
       break;
     default:
       return callback(new Error("LoadFailures error: Unrecognized type (" + type + ")"));

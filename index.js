@@ -440,6 +440,23 @@ function retryErroredContent(callback) {
   });
 }
 
+function compareWithExistingUploads(callback) {
+  diskState.getFileFailures(function(err, failureGroups) {
+    var tasks = [];
+    if (failureGroups['409']) {
+      tasks.push(function(cb) {
+        retryFile409(failureGroups['409'], cb);
+      });
+    }
+    if (failureGroups['pre-409']) {
+      tasks.push(function(cb) {
+        retryFile409(failureGroups['pre-409'], cb);
+      });
+    }
+    async.series(tasks, callback);
+  });
+}
+
 function retryErroredDirectories(callback) {
   diskState.getDirFailures(function(err, failureGroups) {
     var tasks = [];

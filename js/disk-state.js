@@ -204,6 +204,24 @@ DiskState.prototype.getDirFailures = function(completeCallback) {
   });
 };
 
+DiskState.prototype.getFileFailures = function(completeCallback) {
+  var failures = {};
+  FileDb.loadFailures('file', function(rows) {
+    rows.forEach(function(row) {
+      var file = dbRowToFile(row);
+      // Add some additional informational pieces to the default dir info.
+      file.errCode = row.Error_Code;
+      file.errText = row.Error_Blob;
+
+      if (!failures[file.errCode]) {
+        failures[file.errCode] = [];
+      }
+      failures[file.errCode].push(file);
+    });
+    completeCallback(null, failures);
+  });
+};
+
 DiskState.prototype.removeDirError = function(dirId, callback) {
   FileDb.removeDirError(dirId, callback);
 };
