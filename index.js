@@ -3,7 +3,6 @@
 var fs = require('fs');
 var program = require('commander');
 var async = require("async");
-var crypto = require('crypto');
 
 var UI = require('./js/ConsoleOutput.js');
 var BoxUploader = require('./js/box-uploader.js');
@@ -249,46 +248,82 @@ callbacks.onFolderError = function(dir, error, response, completeCallback) {
 };
 
 callbacks.onFileComplete = function(file, error, response, completeCallback) {
+  var tasks = [];
   if (response && response.entries && response['total_count'] === 1) {
     file.remoteId = response.entries[0].id;
   }
-  async.series([
-    function(callback) {
-      if (error) {
-        utils.generalErrorTouchup(error);
-        uploadCounts.badFiles += 1;
-        diskState.storeFileError(file, error, response, callback);
+
+  // Error responses should be fixed, if possible.
+  if (error) {
+    tasks.push(function (callback) {
+      uploadCounts.badFiles += 1;
+      if (ErrorFixer.canFixError('file', error.statusCode, error.message)) {
+        dealWithFileError(file, error, response, callback);
       } else {
-        uploadCounts.goodFiles += 1;
-        // This might be a retry; clear out stored error information.
-        diskState.removeFileError(file.localFolderId, file.name, callback);
+        // Couldn't be fixed.
+        diskState.storeFileError(file, error, response, callback);
       }
-    },
-    function(callback) {
+    });
+  } else {
+    tasks.push(function (callback) {
+      uploadCounts.goodFiles += 1;
+      // This might be a retry; clear out stored error information because we've been successful.
+      diskState.removeFileError(file.localFolderId, file.name, callback);
+    });
+    tasks.push(function(callback) {
       diskState.storeFile('valid', file, callback);
-    },
-    function(callback) {
-      UI.updateUploading({fFiles: uploadCounts.badFiles, sFiles: uploadCounts.goodFiles});
-      diskState.recordCompletion('file', file, callback);
-    },
-    function(callback) {
-      async.parallel([
-        function(cb) {
-          diskState.recordVar('uploaded_bytes', uploadCounts.bytes, cb);
-        },
-        function(cb) {
-          diskState.recordVar('uploaded_file_fail', uploadCounts.badFiles, cb);
-        },
-        function(cb) {
-          diskState.recordVar('uploaded_file_finish', uploadCounts.goodFiles, cb);
-        }
-      ], callback);
-    },
-  ], function(err) {
+    });
+  }
+
+  tasks.push(function(callback) {
+    UI.updateUploading({fFiles: uploadCounts.badFiles, sFiles: uploadCounts.goodFiles});
+    diskState.recordCompletion('file', file, callback);
+  });
+
+  tasks.push(function(callback) {
+    async.parallel([
+      function(cb) {
+        diskState.recordVar('uploaded_bytes', uploadCounts.bytes, cb);
+      },
+      function(cb) {
+        diskState.recordVar('uploaded_file_fail', uploadCounts.badFiles, cb);
+      },
+      function(cb) {
+        diskState.recordVar('uploaded_file_finish', uploadCounts.goodFiles, cb);
+      }
+    ], callback);
+  });
+
+  async.series(tasks, function(err) {
     if (err) {
       throw Error(err);
     }
     completeCallback();
+  });
+}
+
+function dealWithFileError(file, error, response, callback) {
+  var info = {
+    error: error,
+    file: file
+  };
+  ErrorFixer.fixError('file', info, error.statusCode, function (err, remoteId) {
+    if (err) {
+      // Well, didn't work.
+      error.message = err.message;
+      diskState.storeFileError(file, error, response, callback);
+      return;
+    }
+    uploadCounts.goodFiles += 1;
+    uploadCounts.badFiles -= 1;
+    async.series([
+      function(cb) {
+        diskState.storeFile('valid', file, cb);
+      },
+      function(cb) {
+        diskState.removeFileError(file.localFolderId, file.name, cb);
+      }
+    ], callback);
   });
 }
 
@@ -307,7 +342,7 @@ function beginUploading(callback) {
 function collectAndStoreFileHashes(callback) {
   diskState.getUploadedFiles(function(files) {
     async.eachLimit(files, 1, function(file, cb) {
-      getFileHash(file, function(err, hash) {
+      utils.makeFileHash(file, function(err, hash) {
         repairAndConfirmStoredHash(file, hash, cb);
       });
     }, function() {
@@ -332,25 +367,6 @@ function repairAndConfirmStoredHash(file, hash, callback) {
       diskState.storeFile('valid', file, callback);
     }
   });
-};
-
-function getFileHash(file, callback) {
-var hash = crypto.createHash('sha1');
-  var fullFileName = file.pathStr + '/' + file.name;
-  var stream = fs.createReadStream(fullFileName);
-  stream.on('data', function (data) {
-    hash.update(data, 'utf8');
-  });
-
-  stream.on('end', function () {
-    var sha1 = hash.digest('hex');
-    callback(null, sha1);
-  });
-}
-
-callbacks.onFileData = function(chunk) {
-  uploadCounts.bytes += chunk.length;
-  UI.updateUploading({bytes: uploadCounts.bytes});
 };
 
 callbacks.onFileEnd = function() {};
@@ -411,11 +427,10 @@ function uploadDirectory(dir, onDone) {
   });
 }
 
-
 function retryErroredContent(callback) {
   var tasks = [];
 
-
+  tasks.push(compareWithExistingUploads);
   tasks.push(retryMissedDirectories);
   tasks.push(retryErroredDirectories);
   tasks.push(retryErroredFiles);
@@ -521,6 +536,15 @@ function retryDir404s(dirs, callback) {
   });
 }
 
+function retryFile409(files, callback) {
+  putFilesOnBox(files, function(err) {
+    if (err) {
+      // Errors should be caught by now.  If they haven't been, we need to stop.
+      throw err;
+    }
+    callback();
+  });
+}
 
 function determineProgramBehaviors(source, freshStart) {
   var tasks = [];
@@ -644,6 +668,10 @@ function hasContent (filename) {
 
 function initializeData(fresh, callback) {
   var tasks = [];
+
+  tasks.push(loadPreviousState);
+  tasks.push(loadStoredFilesAndDirs);
+
   if (program.redo) {
     tasks.push(function(callback) {
       DiskState.clearProgress(callback);
@@ -738,7 +766,7 @@ function loadPreviousState(doneCallback) {
   tasks.push(function(callback) {
     diskState.getVars(function(rows) {
       rows.forEach(function(varRow) {
-          switch(varRow.Name) {
+        switch(varRow.Name) {
           case 'bytes':
             uploadCounts.totalBytes = parseInt(varRow.Value);
             break;
@@ -819,7 +847,7 @@ function putFilesOnBox(files, doneCallback) {
   async.eachLimit(files, 3, function(file, callback) {
     diskState.recordStart('file', file, function() {
 
-      getFileHash(file, function(err, hash) {
+      utils.makeFileHash(file, function(err, hash) {
         // We're getting the created and modified time now, just before the upload, just to keep
         // everything up to date.
         var fullFileName = file.pathStr + '/' + file.name;

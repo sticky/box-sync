@@ -1,5 +1,6 @@
 'use strict';
-
+var crypto = require('crypto');
+var fs = require('fs');
 function pad(number) {
   if (number < 10) {
     return '0' + number;
@@ -45,5 +46,18 @@ module.exports = {
         }
       });
     }
+  },
+  makeFileHash: function(file, callback) {
+    var hash = crypto.createHash('sha1');
+    var fullFileName = file.pathStr + '/' + file.name;
+    var stream = fs.createReadStream(fullFileName);
+    stream.on('data', function (data) {
+      hash.update(data, 'utf8');
+    });
+
+    stream.on('end', function () {
+      var sha1 = hash.digest('hex');
+      callback(null, sha1);
+    });
   }
 };

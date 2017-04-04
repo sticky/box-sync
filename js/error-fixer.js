@@ -184,6 +184,25 @@ function retryBadUpload(issueInfo, callback) {
   });
 }
 
+function getFileRemoteIdIfMatchesLocal(issueInfo, callback) {
+  var conflictedId = issueInfo.error.response.body.context_info.conflicts.id;
+  var localFile = issueInfo.file;
+  var partialRemoteFile = new FileInfo({remote: conflictedId});
+
+  uploader.getFileInfo(partialRemoteFile, null, function(err, response) {
+    if (err) {
+      callback(err);
+      return;
+    }
+
+    if (response.sha1 !== localFile.hash) {
+      callback(new Error("File already exists but remote file hash did not match local hash."));
+    } else {
+      callback(null, response.id);
+    }
+  });
+}
+
 function isfixableDirError(errorNum, errorText) {
   console.log("error info given", errorNum);
   if (errorNum == 409 || errorNum == 'pre-409') {
@@ -191,6 +210,14 @@ function isfixableDirError(errorNum, errorText) {
   }
 
   if (errorNum == 503) {
+    return true;
+  }
+
+  return false;
+}
+
+function isfixableFileError(errorNum, errorText) {
+  if (errorNum == 409 || errorNum == 'pre-409') {
     return true;
   }
 
@@ -221,6 +248,27 @@ function fixDirError(info, errorNum, callback) {
   }
 }
 
+function fixFileError(info, errorNum, callback) {
+  if (errorNum == 409 || errorNum == 'pre-409') {
+    console.log("fixing FILE error 409");
+    getFileRemoteIdIfMatchesLocal(info, function(err, remoteId) {
+      if (err) {
+        callback(err);
+        return;
+      }
+      info.file.remoteId = remoteId;
+      async.series([
+        function(cb) {
+          store.storeFile('valid', info.file, cb);
+        },
+      ], callback);
+    });
+  } else {
+    callback(new Error("Did not recognize error information during fix attempt: " + errorNum));
+  }
+}
+
+
 ErrorFixer.setBoxUploader = function(box) {
   uploader = box;
 };
@@ -244,6 +292,7 @@ ErrorFixer.canFixError = function(type, errorNum, errorMsg) {
       return isfixableDirError(errorNum, errorMsg);
       break;
     case 'file':
+      return isfixableFileError(errorNum, errorMsg);
       break;
     default:
       throw new Error("canFix?:: Unrecognized error type");
@@ -258,7 +307,7 @@ ErrorFixer.fixError = function(type, info, errorNum, callback) {
       fixDirError(info, errorNum, callback);
       break;
     case 'file':
-
+      fixFileError(info, errorNum, callback);
       break;
     default:
       throw new Error("fixError:: Unrecognized error type");
