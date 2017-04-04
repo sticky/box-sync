@@ -4,16 +4,10 @@ var fs = require('fs');
 var BoxSDK = require('box-node-sdk');
 var async = require('async');
 var Util = require('./util');
+var authorize = require('./authorize.js');
 
 var clientID = require('../files/tokens.env').clientID;
 var clientSecret = require('../files/tokens.env').clientSecret;
-
-var tokenInfo = {
-  accessToken: require('../files/tokens.env').accessToken,
-  refreshToken: require('../files/tokens.env').refreshToken,
-  accessTokenTTLMS: require('../files/tokens.env').tokenExpires,
-  acquiredAtMS: require('../files/tokens.env').tokenRequestedAt,
-}
 
 function putFolderOnBox(dir, itemComplete, doneCallback) {
   // We have a directory, but now we need to figure out the Box.com ID we
@@ -139,11 +133,12 @@ function BoxUploader(diskState, rootRemoteId) {
     clientSecret: clientSecret
   });
 
-  this.client = this.sdk.getPersistentClient(tokenInfo);
+  this.oauthToken = null;
+
+  this.client = null;
   this.diskState = diskState;
   this.rootId = rootRemoteId;
 
-  hackTheFileManager(this.client.files);
 }
 
 BoxUploader.prototype.makeDir = function(dir, onFolderComplete, callback) {
@@ -157,6 +152,25 @@ BoxUploader.prototype.getDirContents = function(boxId, offset, callback) {
 };
 BoxUploader.prototype.getFileInfo = function(file, query, callback) {
   getFileInfo.call(this, file, query, callback);
+};
+
+BoxUploader.prototype.initClient = function(callback) {
+  var self = this;
+  authorize.getBoxTokens(function(err, token) {
+    if (err) {
+      return callback(err);
+    }
+    self.oauthInfo = {
+      accessToken: token.token.access_token,
+      refreshToken: token.token.refresh_token,
+      accessTokenTTLMS: token.token.expires_in,
+      acquiredAtMS: Date.now(),
+    };
+
+    self.client = self.sdk.getPersistentClient(self.oauthInfo);
+    hackTheFileManager(self.client.files);
+    callback(err);
+  });
 };
 
 module.exports = BoxUploader;

@@ -73,7 +73,12 @@ program
     uploader.rootId = dest;
     ErrorFixer.setRootId(dest);
 
-    initializeData(freshStart, determineProgramBehaviors.bind(this, source, freshStart));
+    uploader.initClient(function(err) {
+      if (err) {
+        throw new Error(err.message);
+      }
+      initializeData(freshStart, determineProgramBehaviors.bind(this, source, freshStart));
+    });
   })
   .parse(process.argv);
 
