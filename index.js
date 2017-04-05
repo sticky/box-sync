@@ -330,12 +330,17 @@ function dealWithFileError(file, error, response, callback) {
 function beginUploading(callback) {
   UI.startDisplay('upload');
   UI.updateUploading({totalBytes: uploadCounts.totalBytes, start: Date.now()});
-  createBoxContent(function() {
-    UI.stopDisplay('uploading');
+  uploadNextDirOnBox(function() {
     callback();
-    console.log("Totally done with creating box content!");
   });
 };
+
+function finishUploading(callback) {
+  UI.updateUploading({totalBytes: uploadCounts.totalBytes, start: Date.now()});
+  UI.stopDisplay('uploading');
+  callback();
+  console.log("Totally done with creating box content!");
+}
 
 
 // An earlier version didn't store hashes to the DB.
@@ -377,7 +382,7 @@ callbacks.onFileData = function(chunk) {
 
 callbacks.onFileEnd = function() {};
 
-function createBoxContent(callback) {
+function uploadNextDirOnBox(callback) {
   diskState.getIncompleteDirs(function(dirs) {
     if (dirs === false)  {
       // Fake the root directory as a starting point.
@@ -389,9 +394,9 @@ function createBoxContent(callback) {
     }
     async.each(dirs, uploadDirectory, function(err) {
       if (err) {
-        throw new Error("createBoxContent: " + err);
+        throw new Error("uploadNextDirOnBox: " + err);
       }
-      createBoxContent(callback);
+      uploadNextDirOnBox(callback);
     });
   });
 }
@@ -512,7 +517,7 @@ function retryMissedDirectories(callback) {
           throw new Error("retryDir503s: " + err);
         }
         // Start business as usual.
-        createBoxContent(callback);
+        uploadNextDirOnBox(callback);
       });
     });
   });
@@ -549,7 +554,7 @@ function retryDir503s(dirs, callback) {
         throw new Error("retryDir503s: " + err);
       }
       // Start business as usual.
-      createBoxContent(callback);
+      uploadNextDirOnBox(callback);
     });
   });
 }
@@ -632,6 +637,9 @@ function determineProgramBehaviors(source, freshStart) {
     if (!program.onlyValidate) {
       tasks.push(function(cb) {
         beginUploading(cb);
+      });
+      tasks.push(function(cb) {
+        finishUploading(cb);
       });
     }
   }
