@@ -124,7 +124,7 @@ function createZipofDirAndSaveToStorage(issueInfo, callback) {
   var file = new FileInfo({
     localFolderId: dir.parentId,
     path: dir.pathStr,
-    name: dir.name + '.zip',
+    name: dir.name + '_STICKY_SYNC.zip',
     problems: []
   });
   var output = fs.createWriteStream(file.pathStr + '/' + file.name);
