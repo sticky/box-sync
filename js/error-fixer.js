@@ -37,6 +37,13 @@ function getParentRemoteId(dir, callback) {
   });
 }
 
+function getFileFolderRemoteId(file, callback) {
+  var searchInfo = {dirId: file.localFolderId};
+  store.getRemoteDirId(searchInfo, function(err) {
+    callback(err, searchInfo.remoteId);
+  });
+}
+
 function correctDirRemoteId(issueInfo, callback) {
   var dir = issueInfo.dir;
   var newRemoteId;
@@ -203,9 +210,46 @@ function getFileRemoteIdIfMatchesLocal(issueInfo, callback) {
   });
 }
 
+function maybeMarkDirAsZipped(issueInfo, callback) {
+  // This directory might not have a remote folder to live in because that parent folder
+  // was zipped up.  This directory should be marked as zipped too and not labelled as an error.
+  getParentRemoteId(issueInfo.dir, function(err, remoteId) {
+    if (err) {
+      callback(err);
+      return;
+    }
+    if (remoteId !== 'zipfile') {
+      callback(new Error("Directory directory not flagged as a zipfile directory."));
+      return;
+    }
+    issueInfo.dir.remoteId = 'zipfile'
+    callback(null, issueInfo.dir);
+  });
+}
+
+function maybeMarkFileAsZipped(issueInfo, callback) {
+  // This file might not have a remote folder to live in because that remote folder
+  // was zipped up.  This file should be marked as zipped too and not labelled as an error.
+  getFileFolderRemoteId(issueInfo.file, function(err, remoteId) {
+    if (err) {
+      callback(err);
+      return;
+    }
+    if (remoteId !== 'zipfile') {
+      callback(new Error("File directory not flagged as a zipfile directory."));
+      return;
+    }
+    issueInfo.file.remoteId = 'zipfile'
+    callback(null, issueInfo.file);
+  });
+}
+
 function isfixableDirError(errorNum, errorText) {
-  console.log("error info given", errorNum);
   if (errorNum == 409 || errorNum == 'pre-409') {
+    return true;
+  }
+
+  if (errorNum == 404 || errorNum == 'pre-404') {
     return true;
   }
 
@@ -218,6 +262,10 @@ function isfixableDirError(errorNum, errorText) {
 
 function isfixableFileError(errorNum, errorText) {
   if (errorNum == 409 || errorNum == 'pre-409') {
+    return true;
+  }
+
+  if (errorNum == 404 || errorNum == 'pre-404') {
     return true;
   }
 
@@ -243,6 +291,23 @@ function fixDirError(info, errorNum, callback) {
   } else if (errorNum == 503) {
     console.log("Retying");
     retryBadUpload(info, callback);
+  } else if (errorNum == 404 || errorNum == 'pre-404') {
+    console.log("fixing FILE error 404");
+    // Currently the only recognized case of a 404 file is if the parent directory has ended up getting rolled into
+    // a zip file.
+    maybeMarkDirAsZipped(info, function(err, dir) {
+      if (err) {
+        // Don't pass on the failure to the error log; keep the original information.
+        callback(info.error);
+        return;
+      }
+
+      async.series([
+        function(cb) {
+          store.storeDir('valid', dir, cb);
+        },
+      ], callback);
+    });
   } else {
     callback(new Error("Did not recognize error information during fix attempt: " + errorNum));
   }
@@ -260,6 +325,23 @@ function fixFileError(info, errorNum, callback) {
       async.series([
         function(cb) {
           store.storeFile('valid', info.file, cb);
+        },
+      ], callback);
+    });
+  } else if (errorNum == 404 || errorNum == 'pre-404') {
+    console.log("fixing FILE error 404");
+    // Currently the only recognized case of a 404 file is if the parent directory has ended up getting rolled into
+    // a zip file.
+    maybeMarkFileAsZipped(info, function(err, file) {
+      if (err) {
+        // Don't pass on the failure to the error log; keep the original information.
+        callback(info.error);
+        return;
+      }
+
+      async.series([
+        function(cb) {
+          store.storeFile('valid', file, cb);
         },
       ], callback);
     });

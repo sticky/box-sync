@@ -519,8 +519,20 @@ function retryMissedDirectories(callback) {
 }
 
 function retryErroredFiles(callback) {
-  console.log("retrying error files (unimplemented)");
-  callback();
+  diskState.getFileFailures(function(err, failureGroups) {
+    var tasks = [];
+    if (failureGroups['404']) {
+      tasks.push(function(cb) {
+        retryFile404(failureGroups['404'], cb);
+      });
+    }
+    if (failureGroups['pre-404']) {
+      tasks.push(function(cb) {
+        retryFile404(failureGroups['pre-404'], cb);
+      });
+    }
+    async.series(tasks, callback);
+  });
 }
 
 function retryDir503s(dirs, callback) {
@@ -544,8 +556,6 @@ function retryDir503s(dirs, callback) {
 
 function retryDir404s(dirs, callback) {
 
-
-
   console.log("Not doing anything in retryDir404s yet!");
   callback();
   return;
@@ -560,6 +570,16 @@ function retryDir404s(dirs, callback) {
 }
 
 function retryFile409(files, callback) {
+  putFilesOnBox(files, function(err) {
+    if (err) {
+      // Errors should be caught by now.  If they haven't been, we need to stop.
+      throw err;
+    }
+    callback();
+  });
+}
+
+function retryFile404(files, callback) {
   putFilesOnBox(files, function(err) {
     if (err) {
       // Errors should be caught by now.  If they haven't been, we need to stop.
