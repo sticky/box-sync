@@ -383,7 +383,7 @@ callbacks.onFileData = function(chunk) {
 callbacks.onFileEnd = function() {};
 
 function uploadNextDirOnBox(callback) {
-  diskState.getIncompleteDirs(function(dirs) {
+  diskState.getIncomplete('dir', function(dirs) {
     if (dirs === false)  {
       // Fake the root directory as a starting point.
       dirs = [new StickyDirInfo({inode: 'noparent', parent: 'noparent'})];
@@ -398,6 +398,15 @@ function uploadNextDirOnBox(callback) {
       }
       uploadNextDirOnBox(callback);
     });
+  });
+}
+
+// Some files don't live inside a directory (like files in the root folder)
+// Some files don't exist initially but are created to account for problems,
+// like Mac bundles (apps) or folder conflicts.
+function uploadSpareFiles(callback) {
+  diskState.getIncomplete('file', function(files) {
+    putFilesOnBox(files, callback);
   });
 }
 
@@ -637,6 +646,9 @@ function determineProgramBehaviors(source, freshStart) {
     if (!program.onlyValidate) {
       tasks.push(function(cb) {
         beginUploading(cb);
+      });
+      tasks.push(function(cb){
+        uploadSpareFiles(cb);
       });
       tasks.push(function(cb) {
         finishUploading(cb);

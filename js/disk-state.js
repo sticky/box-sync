@@ -230,10 +230,22 @@ DiskState.prototype.removeFileError = function(folderId, name, callback) {
   FileDb.removeFileError(folderId, name, callback);
 };
 
-DiskState.prototype.getIncompleteDirs = function(completeCallback) {
-  var self = this;
-  FileDb.loadSingleDirProgress(function(row) {
-    var dir;
+DiskState.prototype.getIncomplete = function(type, completeCallback) {
+  var rowProcessFunc;
+
+  switch(type) {
+    case 'dir':
+      rowProcessFunc = dbRowToDir;
+      break;
+    case 'file':
+      rowProcessFunc = dbRowToFile;
+      break;
+    default:
+      throw new Error("getIncomplete:: Unrecognized type requested. (" + type + ")");
+  }
+
+  FileDb.loadSingleProgress(type, function(row) {
+    var item;
     if (row === false) {
       completeCallback(false);
       return;
@@ -242,8 +254,8 @@ DiskState.prototype.getIncompleteDirs = function(completeCallback) {
       completeCallback();
       return;
     }
-    dir = [dbRowToDir(row)];
-    completeCallback(dir);
+    item = [rowProcessFunc(row)];
+    completeCallback(item);
   });
 };
 
