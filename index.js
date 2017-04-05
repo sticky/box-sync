@@ -369,6 +369,12 @@ function repairAndConfirmStoredHash(file, hash, callback) {
   });
 };
 
+
+callbacks.onFileData = function(chunk) {
+  uploadCounts.bytes += chunk.length;
+  UI.updateUploading({bytes: uploadCounts.bytes});
+};
+
 callbacks.onFileEnd = function() {};
 
 function createBoxContent(callback) {
