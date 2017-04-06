@@ -354,6 +354,9 @@ function collectAndStoreFileHashes(callback) {
   diskState.getUploadedFiles(function(files) {
     async.eachLimit(files, 1, function(file, cb) {
       utils.makeFileHash(file, function(err, hash) {
+        if (err) {
+          throw err;
+        }
         repairAndConfirmStoredHash(file, hash, cb);
       });
     }, function() {
@@ -931,6 +934,10 @@ function putFilesOnBox(files, doneCallback) {
     diskState.recordStart('file', file, function() {
 
       utils.makeFileHash(file, function(err, hash) {
+        if (err) {
+          throw err;
+        }
+
         // We're getting the created and modified time now, just before the upload, just to keep
         // everything up to date.
         var fullFileName = file.pathStr + '/' + file.name;
