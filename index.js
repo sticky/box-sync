@@ -417,7 +417,7 @@ function getBoxFileInfo(localFile, query, callback) {
 }
 
 function uploadDirectory(dir, onDone) {
-  console.log("uplading dir");
+  console.log("uploading dir");
   var realDir = dir.localId !== 'noparent';
   async.series([
     function(callback) {
@@ -449,6 +449,10 @@ function uploadDirectory(dir, onDone) {
   });
 }
 
+/* This tasks is intended to go away after development is done.  These are cases where
+   there were unanticipated errors accumulated during development that were not initially
+   accounted for during the initial upload ErrorFix behaviors but now are.
+ */
 function retryErroredContent(callback) {
   var tasks = [];
 
@@ -571,12 +575,8 @@ function retryDir503s(dirs, callback) {
 }
 
 function retryDir404s(dirs, callback) {
-
-  console.log("Not doing anything in retryDir404s yet!");
-  callback();
-  return;
   putFoldersOnBox(dirs, function(err) {
-    console.log("retrying dirs");
+    console.log("retrying dirs 404");
     if (err) {
       // Errors should be caught by now.  If they haven't been, we need to stop.
       throw err;

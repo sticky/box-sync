@@ -134,7 +134,6 @@ DiskState.prototype.storeFile = function(classification, fileInfo, doneCallback)
 };
 
 DiskState.prototype.storeDirError = function(dir, err, response, callback) {
-  console.log("storing dir error", err);
   FileDb.storeDirError(dir.localId, err.statusCode, err.message, callback);
 };
 

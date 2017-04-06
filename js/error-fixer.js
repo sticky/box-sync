@@ -306,6 +306,9 @@ function fixDirError(info, errorNum, callback) {
         function(cb) {
           store.storeDir('valid', dir, cb);
         },
+        function(cb) {
+          store.removeDirError(dir.localId, cb);
+        },
       ], callback);
     });
   } else {
