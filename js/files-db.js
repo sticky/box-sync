@@ -22,7 +22,8 @@ var stmtFile;
 var queue = async.queue(storeWorker, 100); // This might need to be fiddled with.
 
 var CLASS_ENUM  = {
-  'bad': 1,
+  'bad': 1, // TODO: Phase out 'bad'
+  'invalid': 2, // 'Bad' is kinda a dumb choice and not the obvious opposite of 'valid'
   'valid': 2,
   'failed': 3,
 }
@@ -183,10 +184,14 @@ function storeFile(localFolderId, fullPath, name, remoteId, createdStr, updatedS
 }
 
 function loadDirs(classification, onFinish) {
-  var stmt = 'SELECT * FROM ' + TABLE_DIRS + ' d INNER JOIN ' + TABLE_DIR_CLASS + ' dc ';
+  var stmt = 'SELECT * FROM ' + TABLE_DIRS + ' d LEFT JOIN ' + TABLE_DIR_CLASS + ' dc ';
   stmt += 'ON d.Sys_Id_Num = dc.Dir_Id ';
-  stmt += 'INNER JOIN ' + TABLE_DIR_ISSUES + ' di ';
-  stmt += 'ON d.Sys_Id_Num = di.DirId';
+  stmt += 'LEFT JOIN ' + TABLE_DIR_ISSUES + ' di ';
+  stmt += 'ON d.Sys_Id_Num = di.DirId ';
+  stmt += 'LEFT JOIN ' + TABLE_DIR_PROGRESS + ' dp ';
+  stmt += 'ON d.Sys_Id_Num = dp.Dir_Id ';
+  stmt += 'LEFT JOIN ' + TABLE_DIR_ERROR + ' de ';
+  stmt += 'ON d.Sys_Id_Num = de.Dir_Id_Num';
 
   if (classification) {
     stmt += ' WHERE dc.Class = ' + CLASS_ENUM[classification];
@@ -309,10 +314,14 @@ function loadSingleFile(dirId, name, onFinish) {
 }
 
 function loadFiles(classification, onFinish) {
-  var stmt = 'SELECT * FROM ' + TABLE_FILES + ' f INNER JOIN ' + TABLE_FILE_CLASS + ' fc ';
+  var stmt = 'SELECT * FROM ' + TABLE_FILES + ' f LEFT JOIN ' + TABLE_FILE_CLASS + ' fc ';
   stmt += 'ON f.Folder_Id = fc.Folder_Id AND f.Name = fc.File_Name ';
-  stmt += 'INNER JOIN ' + TABLE_FILE_ISSUES + ' fi ';
-  stmt += 'ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name';
+  stmt += 'LEFT JOIN ' + TABLE_FILE_ISSUES + ' fi ';
+  stmt += 'ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name ';
+  stmt += 'LEFT JOIN ' + TABLE_FILE_PROGRESS + ' fp ';
+  stmt += 'ON f.Folder_Id = fp.Folder_Id AND f.Name = fp.Name ';
+  stmt += 'LEFT JOIN ' + TABLE_FILE_ERROR + ' fe ';
+  stmt += 'ON f.Folder_Id = fe.Folder_Id AND f.Name = fe.Name';
 
   if (classification) {
     stmt += ' WHERE fc.Class = ' + CLASS_ENUM[classification];
@@ -776,6 +785,7 @@ FilesDb.loadFilesWithRemoteIds = function(callback) {
   stmt += 'ON f.Folder_Id = fc.Folder_Id AND f.Name = fc.File_Name ';
   stmt += 'INNER JOIN ' + TABLE_FILE_ISSUES + ' fi ';
   stmt += 'ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name';
+  stmt += 'INNER JOIN ' + TABLE_FILE_PROGRESS + ' fp ';
 
   stmt += ' WHERE fc.Class = ' + CLASS_ENUM['valid'] + ' AND f.Remote_Id IS NOT "unknown"';
 
