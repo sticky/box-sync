@@ -235,7 +235,9 @@ callbacks.onFolderError = function(dir, error, response, completeCallback) {
     info.dir = dir;
     ErrorFixer.fixError('dir', info, error.statusCode, function(err, remoteId) {
       if (err) {
-        completeCallback(err);
+        error.message = err.message + "(" + error.message + ")";
+        diskState.storeDirError(dir, error, response, completeCallback);
+        return;
       }
       uploadCounts.fixedDirs += 1;
       uploadCounts.badDirs -= 1;

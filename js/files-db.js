@@ -763,7 +763,7 @@ FilesDb.loadSingleProgress = function(type, callback) {
   loadIncompleteProgress(type, function(row) {
     if (type == 'dir' && row && row.Dir_Id) {
       loadSingleDir(row.Dir_Id, callback);
-    } else if (type == 'file' && row.Folder_Id && row.Name) {
+    } else if (type == 'file' && row && row.Folder_Id && row.Name) {
       loadSingleFile(row.Folder_Id, row.Name, callback);
     } else {
       callback(row);
