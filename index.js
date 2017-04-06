@@ -10,6 +10,7 @@ var StickyFileInfo = require('./js/file-info');
 var StickyDirInfo = require('./js/dir-info');
 var DiskState = require('./js/disk-state');
 var ErrorFixer = require('./js/error-fixer');
+var FileFixer = require('./js/file-fixer');
 var utils = require('./js/util');
 
 var validator = require('./js/filename-validator');
@@ -24,6 +25,8 @@ var diskState = new DiskState();
 var uploader = new BoxUploader(diskState);
 ErrorFixer.setBoxUploader(uploader);
 ErrorFixer.setStorage(diskState);
+FileFixer.setBoxUploader(uploader);
+FileFixer.setStorage(diskState);
 
 var times = {
   start: process.hrtime(),
@@ -71,6 +74,7 @@ program
 
     uploader.rootId = dest;
     ErrorFixer.setRootId(dest);
+    FileFixer.setRootId(dest);
 
     uploader.initClient(function(err) {
       if (err) {
@@ -412,6 +416,16 @@ function uploadSpareFiles(callback) {
   });
 }
 
+// This is task is best run after the directory structure is in place on Box.
+function tryToUploadInvalidFiles(callback) {
+  diskState.getInvalidFiles(function(err, files) {
+    if (err) {
+      throw err;
+    }
+    putFilesOnBox(files, callback);
+  });
+}
+
 function getBoxFileInfo(localFile, query, callback) {
   uploader.getFileInfo(localFile, query, callback);
 }
@@ -460,6 +474,7 @@ function retryErroredContent(callback) {
   tasks.push(retryMissedDirectories);
   tasks.push(retryErroredDirectories);
   tasks.push(retryErroredFiles);
+  tasks.push(tryToUploadInvalidFiles);
 
   async.series(tasks, function() {
     callback();
@@ -651,6 +666,9 @@ function determineProgramBehaviors(source, freshStart) {
       });
       tasks.push(function(cb){
         uploadSpareFiles(cb);
+      });
+      tasks.push(function(cb) {
+        tryToUploadInvalidFiles(cb);
       });
       tasks.push(function(cb) {
         finishUploading(cb);
@@ -922,7 +940,8 @@ function putFilesOnBox(files, doneCallback) {
         file.hash = hash;
 
         if (file.issues.length !== 0) {
-          throw new Error("BAD FILE, SHOULD NOT BE TRYING TO SYNC: " + file.localFolderId);
+          FileFixer.fixAndUpload(file, {data: callbacks.onFileData, end: callbacks.onFileEnd}, callbacks.onFileComplete, callback);
+          return;
         }
         uploader.makeFile(file, {data: callbacks.onFileData, end: callbacks.onFileEnd}, callbacks.onFileComplete, callback);
       });

@@ -59,5 +59,39 @@ module.exports = {
       var sha1 = hash.digest('hex');
       callback(null, sha1);
     });
+  },
+  /* Box only supports file names of 255 characters or less. Names that will not be supported are those that
+    contain non-printable ascii, / or \, names with leading or trailing spaces, and the special
+    names “.” and “..”
+   */
+  /* Wesnote: I originally interpereted this as needing to restrict filenames to only the limited "printable ascii" (32 - 127)
+     character set.  However, that isn't quite what the docs are saying.  Excluding the non-printable ASCII means
+     everything else "should" work (except for the specific exclusions mentioned in the doc).
+   */
+  validators: {
+    badLength: function (filename) {
+      if (filename.length > 255) {
+        return false;
+      }
+    },
+    badChars: function (filename) {
+      // "." and ".." aren't explicitly checked because functionality is already ignoring those special files.
+      return /[\x00-\x1F]|[\/\\]/g.test(filename);
+    },
+    badWhitespace: function (filename) {
+      return /^[\s]|[\s]$/g.test(filename);
+    },
+    ignored: function (name) {
+      // Very specific names...
+      switch (name) {
+        case '.Trash':
+        case '.DS_Store':
+        case '.cache':
+          return true;
+          break;
+      }
+
+      return false;
+    }
   }
 };

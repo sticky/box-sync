@@ -3,6 +3,7 @@ var fs = require('fs');
 var FileState = require('./disk-state');
 var StickyFile = require('./file-info');
 var StickyDir = require('./dir-info');
+var utils = require('./util');
 var Path = require('path');
 var async = require('async');
 
@@ -20,31 +21,7 @@ var fileState;
 // Making sure errors in code don't cause us to categorize a directory more than once.
 var checkedInoNumbers = [];
 
-var NameHas = {
-  badLength: function (filename) {
-    if (filename.length > 255) {
-      return false;
-    }
-  },
-  badChars: function (filename) {
-    return /[^ -~]|[\/\\]/g.test(filename);
-  },
-  badWhitespace: function(filename) {
-    return /^[\s]|[\s]$/g.test(filename);
-  },
-  ignored: function(name) {
-    // Very specific names...
-    switch (name) {
-      case '.Trash':
-      case '.DS_Store':
-      case '.cache':
-        return true;
-        break;
-    }
-
-    return false;
-  }
-};
+var NameHas = utils.validators;
 
 var stats = {
   bytes: 0,

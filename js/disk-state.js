@@ -258,6 +258,21 @@ DiskState.prototype.getIncomplete = function(type, completeCallback) {
   });
 };
 
+DiskState.prototype.getInvalidFiles = function(completeCallback) {
+  FileDb.loadAll('file', 'bad', function(rows) {
+    var files = [];
+    if (!rows) {
+      completeCallback(null);
+      return;
+    }
+
+    rows.forEach(function(row) {
+      files.push(dbRowToFile(row));
+    });
+    completeCallback(null, files);
+  });
+};
+
 // Are there perfectly valid, error-free directories without a remote ID?
 DiskState.prototype.getRemotelessDirs = function(completeCallback) {
   var self = this;
