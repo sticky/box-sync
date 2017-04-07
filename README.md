@@ -1,63 +1,83 @@
 # Box Initial Sync Script
 
-If you fall into the category where you have a large number of files (~ terrabyte) to upload but are still too small-fry
-to send your hard drive to them to let them to upload files for you, you're probably running into incomplete file uploads 
-or upload failures that happen hours into your transfer while using Box's official uploader with little to no explanation 
-of what the problem might be.
+This script does only one thing: reviews an entire directory and uploads its contents to a Box.com
+folder.  
+
+If you have a large file archive dating back years, filled with hundreds/thousands of files 
+of a gajillion different formats, the Box Uploader is probably going to fail several times and not
+really provide you a clue why.
+ 
+This script was built to try to anticipate some of these errors, try to fix them, and not completely
+fail if a few hundred files or directories are getting rejected by Box.com for some reason.
+
+This *not* meant to replace Box Sync or some other syncing utility.  Once you are done (or close enough
+to done) with your initial gigantic upload, this script is done, too.
 
 ## Important
-This script is an attempt to make that initial upload easier... but it's still pretty rough, so you're going to need
-to get your hands dirty in the command line.
+This script is intended to be used by advanced users who know how to read a SQLite Database
+or run things on the command line.  You'll be able to read why a file didn't make it, or why a file
+might not have been attempted at all.
+
+This script is also very much an alpha.  It was a tool we wanted to make, we used it to do what we
+needed it to do, and it might not cover scenarios specific to your massive upload.  Especially if you
+are not a Mac user!
 
 People who try to use this should be:
 * Able to modify Javascript files.
 * Use the command line
 * Willing to install and run Node
-* Is familiar with HTTP requests such as POST and GET (and have made those requests manually)
+* Be able to create a Box.com App using a developer account (https://developer.box.com/)
+
+# Requirements
+## Box.com App
+This script is not associated with a particular web app, so you will need to create your own.
 
 # Installation
 
 If you downloaded the codebase directly, you can use 
-`npm install -g` while in this directory.
-
-If we publish this somewhere, you can also use
-`npm install -g sticky-box-sync` after you download and install Node.js.
+`npm install` while in this directory.
 
 # Authentication
-Yuck.
-This script doesn't have a nice authentication process yet.
-You will need to do some handwork and know how to POST and GET from/to URLs.
+This script uses the web-based three-legged OAuth2 process which is quite nice if you've got a web browser but not
+so great if you're trying to run a command line script.  It is hard to display Box.com's HTML login form
+on a terminal!
 
-Fortunately, almost every browser has a plugin that will let you manually create HTTP requests,  e.g [Postman](https://www.getpostman.com)
+Maybe it will support the more server-oriented approach sometime, but that requires more user management and
+private key configuration in addition to the App creation steps we already needed to take.
 
-Follow the steps at [Box.com's OAuth documentation](https://docs.box.com/docs/oauth-20)!
+## Oauth Script Configuration
+Update the tokens.env file with information about your app.
 
-After step 5 ("5. Getting the Access Token"), you're ready to update the tokens.env file.
-
-Token information you get during this process goes into `files/tokens.env` and looks like the following...
+![Dev Console Oauth Information][Dev Oauth Info]
 
 ```
-exports.accessToken = 'ACCESS_TOKEN_GIBBERISH';
-exports.refreshToken = 'REFRESH_TOKEN_GIBBERISH';
-exports.tokenExpires = parseInt(RESPONSE_VALUE_HERE, 10) * 1000;
-exports.tokenRequestedAt = The value of [Date.now()](https://jsfiddle.net/Razoras/h4aptgq3/4/) when this token was requested.;
+exports.clientID = 'your-really-long-client-id-number';
+exports.clientSecret = 'your-really-long-client-secret-number';
+exports.redirectUri = 'https://your-redirect-url-here';
 ```
 
-This information will be sufficient to allow this script to proceed for more than an hour and intelligently refresh
-the access token while it runs for an extended period of time.
-
+### Note about your redirect URL
+This doesn't have to be a functional server page that will act on the URL parameters provided to them.
+It could even be something like "localhost" if you want.  You will be redirected here after authorizing
+your Box.com app, and you will be copying a URL parameter into your terminal window.
 
 # Usage
-Optimally, you can use `box-sync [flags] <source directory> <Box.com folderID>` and just watch progress bars fill in.
 
-Unfortunately, due to limits in Node's default heap size, this probably won't be enough.  See the [known issues](#known-issues) section.
+Run: node --max_old_space_size=4096 index.js -- [flags] <folder> <BoxFolderId>
 
-# Development Notes
-Use `npm link` to make dev easier.
+When the script starts, it will prompt you to visit a URL and authorize the app to use your credentials.
+
+You are also directed to copy a portion of the URL you were directed to back into the terminal to complete
+authentication.
+
+EG: https://your-redirect-url-here?state=stringstring&code=*LONG-NUMBER-AND-LETTER-STRING*
+
+The code we want is `LONG-NUMBER-AND-LETTER-STRING`
 
 # Known Issues
 
 * If your system goes to sleep, this program will probably explode.
-* NPM has a sorta small default memory limit for the potential amount of information it might be trying to keep track of.
-  If you run into this problem (most likely place is during the validation step), you are going to need to use node directly instead of the handy `box-sync` command.
-    * EG: `node --max_old_space_size=4096 index.js -- [flags] <folder> <BoxFolderId>`
+* Not all cases of failure are accounted for.
+* Feel free to contribute your own issues you had, or ways you fixed them,
+
+[Dev Oauth Info]: docs/dev_console_info.png
