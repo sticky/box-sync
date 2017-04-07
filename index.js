@@ -67,6 +67,7 @@ program
   .option('-n, --assume-new', 'Completely ignore results from previous runs.')
   .option('-r, --redo', 'Try to upload all files, ignoring previous upload attempts.')
   .option('-f, --fix-errors', 'Try to fix errors encountered on a previous upload attempt.')
+  .option('-c', '--should-correct-invalids', 'Try to fix filenames that have been determined to be invalid and upload them.')
   .option('-d, --development', 'Focus on what is being developed (do not use unless you know what you are doing.')
   .action(function(source, dest) {
     console.log("SOURCE", source);
@@ -477,7 +478,9 @@ function retryErroredContent(callback) {
   tasks.push(retryMissedDirectories);
   tasks.push(retryErroredDirectories);
   tasks.push(retryErroredFiles);
-  tasks.push(tryToUploadInvalidFiles);
+  if (program.shouldCorrectInvalids) {
+    tasks.push(tryToUploadInvalidFiles);
+  }
 
   async.series(tasks, function() {
     callback();
