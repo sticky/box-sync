@@ -184,7 +184,8 @@ function storeFile(localFolderId, fullPath, name, remoteId, createdStr, updatedS
 }
 
 function loadDirs(classification, onFinish) {
-  var stmt = 'SELECT * FROM ' + TABLE_DIRS + ' d LEFT JOIN ' + TABLE_DIR_CLASS + ' dc ';
+  var cols = 'd.Sys_Id_Num, d.Parent_Id, d.Remote_Id, d.Full_Path, d.Name, d.Created, d.Updated, dc.Class, de.Error_Code, de.Error_Blob, di.Long, di.Chars, di.Spaces, dp.Done';
+  var stmt = 'SELECT ' + cols + ' FROM ' + TABLE_DIRS + ' d LEFT JOIN ' + TABLE_DIR_CLASS + ' dc ';
   stmt += 'ON d.Sys_Id_Num = dc.Dir_Id ';
   stmt += 'LEFT JOIN ' + TABLE_DIR_ISSUES + ' di ';
   stmt += 'ON d.Sys_Id_Num = di.DirId ';
@@ -314,7 +315,8 @@ function loadSingleFile(dirId, name, onFinish) {
 }
 
 function loadFiles(classification, onFinish) {
-  var stmt = 'SELECT * FROM ' + TABLE_FILES + ' f LEFT JOIN ' + TABLE_FILE_CLASS + ' fc ';
+  var cols = 'f.Folder_Id, f.Full_Path, f.name, f.Remote_Id, f.Created, f.Updated, f.Hash, fc.Class, fe.Error_Code, fe.Error_Blob, fi.Long, fi.Chars, fi.Spaces, fp.Done';
+  var stmt = 'SELECT ' + cols + ' FROM ' + TABLE_FILES + ' f LEFT JOIN ' + TABLE_FILE_CLASS + ' fc ';
   stmt += 'ON f.Folder_Id = fc.Folder_Id AND f.Name = fc.File_Name ';
   stmt += 'LEFT JOIN ' + TABLE_FILE_ISSUES + ' fi ';
   stmt += 'ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name ';
