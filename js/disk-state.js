@@ -258,7 +258,7 @@ DiskState.prototype.getIncomplete = function(type, completeCallback) {
   });
 };
 
-DiskState.prototype.getInvalidFiles = function(completeCallback) {
+DiskState.prototype.getUnfinishedInvalidFiles = function(completeCallback) {
   FileDb.loadAll('file', 'bad', function(rows) {
     var files = [];
     if (!rows) {
@@ -267,7 +267,10 @@ DiskState.prototype.getInvalidFiles = function(completeCallback) {
     }
 
     rows.forEach(function(row) {
-      files.push(dbRowToFile(row));
+      var file = dbRowToFile(row);
+      if (!row.Done) {
+        files.push(file);
+      }
     });
     completeCallback(null, files);
   });

@@ -61,8 +61,11 @@ FileFixer.fixAndUpload = function(file, streamHandlers, onFileComplete, callback
     },
     function(cb) {
       file.remoteId = 'renamed';
-      store.recordCompletion('file', file, cb);
+      store.storeFile('bad', file, cb);
     },
+    function(cb) {
+      store.recordCompletion('file', file, cb);
+    }
   ], callback);
 };
 

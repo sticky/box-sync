@@ -421,7 +421,7 @@ function uploadSpareFiles(callback) {
 
 // This is task is best run after the directory structure is in place on Box.
 function tryToUploadInvalidFiles(callback) {
-  diskState.getInvalidFiles(function(err, files) {
+  diskState.getUnfinishedInvalidFiles(function(err, files) {
     if (err) {
       throw err;
     }
