@@ -10,8 +10,7 @@ var TABLE_FILE_PROGRESS = 'Files_Progress';
 var TABLE_DIR_ERROR = 'Directory_Failures';
 var TABLE_FILE_ERROR = 'File_Failures';
 
-
-var DIR_INSERT = 'INSERT OR REPLACE INTO ' + TABLE_DIRS + '(Sys_Id_Num, Parent_Id, Remote_Id, Full_Path, Name, Created, Updated) VALUES ($id, $parentId, $remoteId, $path, $name, $created, $updated;';
+var DIR_INSERT = 'INSERT OR REPLACE INTO ' + TABLE_DIRS + '(Sys_Id_Num, Parent_Id, Remote_Id, Full_Path, Name, Created, Updated) VALUES ($id, $parentId, $remoteId, $path, $name, $created, $updated);';
 var FILE_INSERT = 'INSERT OR REPLACE INTO ' + TABLE_FILES + ' (Folder_Id, Full_Path, Name, Remote_Id, Created, Updated, Hash) VALUES ($folderId, $path, $name, $remote, $created, $updated, $hash);';
 var DIR_ISSUE_INSERT = 'INSERT OR REPLACE INTO ' + TABLE_DIR_ISSUES + ' (DirId, Long, Chars, Spaces) VALUES ($id, $long, $chars, $spaces);';
 var FILE_ISSUE_INSERT = 'INSERT OR REPLACE INTO ' + TABLE_FILE_ISSUES + ' (Folder_Id, File_Name, Long, Chars, Spaces) VALUES ($folder, $name, $long, $chars, $spaces);';
@@ -50,8 +49,11 @@ Query.insert = {
   }
 };
 
-Query.load = {};
 
+/* Note: Try to avoid terminating any of SELECTs with a semicolon; there's a good chance this queries will have
+   WHERES or LIMITs or other additions.
+ */
+Query.load = {};
 Query.load.dir = {
   full: function() {
     var stmt = 'SELECT ' + COLS.DIR.FULL + ' FROM ' + TABLE_DIRS + ' d LEFT JOIN ' + TABLE_DIR_CLASS + ' dc ';
@@ -133,7 +135,6 @@ Query.load.var = {
 };
 
 Query.delete = {};
-
 Query.delete.dir = {
   error: function() {
     return 'DELETE FROM ' + TABLE_DIR_ERROR + ' WHERE Dir_Id_Num IS $dirNum;'
@@ -173,6 +174,9 @@ Query.tables.errors = function() {
     TABLE_FILE_ERROR];
 };
 
+/* Note: Try to avoid terminating any of SELECTs with a semicolon; there's a good chance this queries will have
+ WHERES or LIMITs or other additions.
+ */
 Query.count = {};
 Query.count.dir = {
   progress: function() {
