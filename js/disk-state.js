@@ -229,7 +229,7 @@ DiskState.prototype.removeFileError = function(folderId, name, callback) {
   FileDb.removeFileError(folderId, name, callback);
 };
 
-DiskState.prototype.getIncomplete = function(type, completeCallback) {
+DiskState.prototype.getFirstIncomplete = function(type, completeCallback) {
   var rowProcessFunc;
 
   switch(type) {
@@ -240,7 +240,7 @@ DiskState.prototype.getIncomplete = function(type, completeCallback) {
       rowProcessFunc = dbRowToFile;
       break;
     default:
-      throw new Error("getIncomplete:: Unrecognized type requested. (" + type + ")");
+      throw new Error("getFirstIncomplete:: Unrecognized type requested. (" + type + ")");
   }
 
   FileDb.loadSingleProgress(type, function(row) {

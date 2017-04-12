@@ -1,6 +1,8 @@
 'use strict';
 var sqlite3 = require('sqlite3'); //.verbose();
 var async = require('async');
+var query = require('./query-builder');
+
 // Making sure that this database is hidden off wherever this script is, and not popping up wherever we randomly
 // run.  Plus, we don't have table creation queries.
 var db = new sqlite3.Database(__dirname + '/../files-db.sqlite', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE);
@@ -25,8 +27,8 @@ var CLASS_ENUM  = {
   'bad': 1, // TODO: Phase out 'bad'
   'invalid': 2, // 'Bad' is kinda a dumb choice and not the obvious opposite of 'valid'
   'valid': 2,
-  'failed': 3,
-}
+  'failed': 3
+};
 
 var FilesDb = module.exports;
 
@@ -51,9 +53,9 @@ function prepareStatements(callback) {
 }
 
 function finishPreparing(callback) {
-  stmtDir = db.prepare('INSERT OR REPLACE INTO ' + TABLE_DIRS + '(Sys_Id_Num, Parent_Id, Remote_Id, Full_Path, Name, Created, Updated) VALUES ($id, $parentId, $remoteId, $path, $name, $created, $updated);',
+  stmtDir = db.prepare(query.insert.dir.dir(),
   [], function() {
-    stmtFile = db.prepare('INSERT OR REPLACE INTO ' + TABLE_FILES + ' (Folder_Id, Full_Path, Name, Remote_Id, Created, Updated, Hash) VALUES ($folderId, $path, $name, $remote, $created, $updated, $hash);', [], callback);
+    stmtFile = db.prepare(query.insert.file.file(), [], callback);
   });
 }
 
@@ -72,36 +74,19 @@ function finalizeStatements(callback) {
 
 function truncateEverything(callback) {
   // Order matters!  Foreign key constraints.
-  var tables = [
-    TABLE_DIR_ERROR,
-    TABLE_FILE_ERROR,
-    TABLE_DIR_PROGRESS,
-    TABLE_FILE_PROGRESS,
-    TABLE_FILE_CLASS,
-    TABLE_DIR_CLASS,
-    TABLE_FILE_ISSUES,
-    TABLE_DIR_ISSUES,
-    TABLE_DIRS,
-    TABLE_FILES,
-  ];
+  var tables = query.tables.all();
   truncateTables(tables, callback);
 }
 
 function truncateProgress(callback) {
   // Order matters!  Foreign key constraints in play.
-  var tables = [
-    TABLE_DIR_PROGRESS,
-    TABLE_FILE_PROGRESS,
-  ];
+  var tables = query.tables.progress();
   truncateTables(tables, callback);
 }
 
 function truncateErrors(callback) {
   // Order matters!  Foreign key constraints in play.
-  var tables = [
-    TABLE_DIR_ERROR,
-    TABLE_FILE_ERROR,
-  ];
+  var tables = query.tables.errors();
   truncateTables(tables, callback);
 }
 
@@ -184,15 +169,7 @@ function storeFile(localFolderId, fullPath, name, remoteId, createdStr, updatedS
 }
 
 function loadDirs(classification, onFinish) {
-  var cols = 'd.Sys_Id_Num, d.Parent_Id, d.Remote_Id, d.Full_Path, d.Name, d.Created, d.Updated, dc.Class, de.Error_Code, de.Error_Blob, di.Long, di.Chars, di.Spaces, dp.Done';
-  var stmt = 'SELECT ' + cols + ' FROM ' + TABLE_DIRS + ' d LEFT JOIN ' + TABLE_DIR_CLASS + ' dc ';
-  stmt += 'ON d.Sys_Id_Num = dc.Dir_Id ';
-  stmt += 'LEFT JOIN ' + TABLE_DIR_ISSUES + ' di ';
-  stmt += 'ON d.Sys_Id_Num = di.DirId ';
-  stmt += 'LEFT JOIN ' + TABLE_DIR_PROGRESS + ' dp ';
-  stmt += 'ON d.Sys_Id_Num = dp.Dir_Id ';
-  stmt += 'LEFT JOIN ' + TABLE_DIR_ERROR + ' de ';
-  stmt += 'ON d.Sys_Id_Num = de.Dir_Id_Num';
+  var stmt = query.load.dir.full();
 
   if (classification) {
     stmt += ' WHERE dc.Class = ' + CLASS_ENUM[classification];
@@ -234,18 +211,10 @@ function loadFilesWithParent(dirId, classification, callback) {
 function loadFromParent(type, parentId, classification, callback) {
   var stmt = '';
   var params = {};
-  var table = TABLE_FILES;
-  var classTable = TABLE_FILE_CLASS;
-  var issuesTable = TABLE_FILE_ISSUES;
-  var itemFolderCol = 'Folder_Id';
-  var whereStr = ' WHERE i.Folder_Id = $id';
 
   switch(type) {
     case 'dir':
-      stmt = 'SELECT * FROM ' + TABLE_DIRS + ' d INNER JOIN ' + TABLE_DIR_CLASS + ' dc ';
-      stmt += 'ON d.Sys_Id_Num = dc.Dir_Id ';
-      stmt += 'INNER JOIN ' + TABLE_DIR_ISSUES + ' di ';
-      stmt += 'ON d.Sys_Id_Num = di.DirId';
+      stmt = query.load.dir.dir();
       stmt += ' WHERE d.Parent_Id = $dirId';
       params = {$dirId:parentId };
       if (classification) {
@@ -254,10 +223,7 @@ function loadFromParent(type, parentId, classification, callback) {
       }
       break;
     case 'file':
-      stmt = 'SELECT * FROM ' + TABLE_FILES + ' f INNER JOIN ' + TABLE_FILE_CLASS + ' fc ';
-      stmt += 'ON f.Folder_Id = fc.Folder_Id AND f.Name = fc.File_Name ';
-      stmt += 'INNER JOIN ' + TABLE_FILE_ISSUES + ' fi ';
-      stmt += 'ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name ';
+      stmt = query.load.file.file();
       stmt += 'WHERE f.Folder_Id = $dirId';
       params = {$dirId:parentId};
       if (classification) {
@@ -267,7 +233,6 @@ function loadFromParent(type, parentId, classification, callback) {
       break;
     default:
       throw new Error('FilesDb:::loadFromParent()  unrecognized type (' + type + ')');
-
   }
 
   db.all(stmt, params, function(err, rows) {
@@ -279,11 +244,7 @@ function loadFromParent(type, parentId, classification, callback) {
 }
 
 function loadSingleDir(dirId, onFinish) {
-  var stmt = 'SELECT * FROM ' + TABLE_DIRS + ' d INNER JOIN ' + TABLE_DIR_CLASS + ' dc ';
-  stmt += 'ON d.Sys_Id_Num = dc.Dir_Id ';
-  stmt += 'INNER JOIN ' + TABLE_DIR_ISSUES + ' di ';
-  stmt += 'ON d.Sys_Id_Num = di.DirId';
-
+  var stmt = query.load.dir.dir();
   stmt += ' WHERE d.Sys_Id_Num = $dirId';
 
   db.get(stmt, {$dirId: dirId}, function(err, row) {
@@ -297,11 +258,7 @@ function loadSingleDir(dirId, onFinish) {
 }
 
 function loadSingleFile(dirId, name, onFinish) {
-  var stmt = 'SELECT * FROM ' + TABLE_FILES + ' f INNER JOIN ' + TABLE_FILE_CLASS + ' fc ';
-  stmt += 'ON f.Folder_Id = fc.Folder_Id AND f.Name = fc.File_Name ';
-  stmt += 'INNER JOIN ' + TABLE_FILE_ISSUES + ' fi ';
-  stmt += 'ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name';
-
+  var stmt = query.load.file.file();
   stmt += ' WHERE f.Folder_Id = $dirId AND f.Name = $name';
 
   db.get(stmt, {$dirId: dirId, $name: name}, function(err, row) {
@@ -315,15 +272,7 @@ function loadSingleFile(dirId, name, onFinish) {
 }
 
 function loadFiles(classification, onFinish) {
-  var cols = 'f.Folder_Id, f.Full_Path, f.name, f.Remote_Id, f.Created, f.Updated, f.Hash, fc.Class, fe.Error_Code, fe.Error_Blob, fi.Long, fi.Chars, fi.Spaces, fp.Done';
-  var stmt = 'SELECT ' + cols + ' FROM ' + TABLE_FILES + ' f LEFT JOIN ' + TABLE_FILE_CLASS + ' fc ';
-  stmt += 'ON f.Folder_Id = fc.Folder_Id AND f.Name = fc.File_Name ';
-  stmt += 'LEFT JOIN ' + TABLE_FILE_ISSUES + ' fi ';
-  stmt += 'ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name ';
-  stmt += 'LEFT JOIN ' + TABLE_FILE_PROGRESS + ' fp ';
-  stmt += 'ON f.Folder_Id = fp.Folder_Id AND f.Name = fp.Name ';
-  stmt += 'LEFT JOIN ' + TABLE_FILE_ERROR + ' fe ';
-  stmt += 'ON f.Folder_Id = fe.Folder_Id AND f.Name = fe.Name';
+  var stmt = query.load.file.full();
 
   if (classification) {
     stmt += ' WHERE fc.Class = ' + CLASS_ENUM[classification];
@@ -340,16 +289,13 @@ function loadFiles(classification, onFinish) {
 }
 
 function storeDirIssues(idNum, issueArr, onDoneCallback) {
-  var mainTable = TABLE_DIR_ISSUES;
   var updateParams = {
     $id: idNum
   };
-  var updateStr = 'INSERT OR REPLACE INTO ';
-  var valuesStr = ' (DirId, Long, Chars, Spaces) VALUES ($id, $long, $chars, $spaces);';
   setIssueParams(updateParams, issueArr);
   setForeignKeysPragma();
 
-  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+  db.run(query.insert.dir.issue(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store issues error: " + err);
     }
@@ -360,17 +306,14 @@ function storeDirIssues(idNum, issueArr, onDoneCallback) {
 }
 
 function storeFileIssues(folderId, name, issuesArray, onDoneCallback) {
-  var mainTable = TABLE_FILE_ISSUES;
   var updateParams = {
     $folder: folderId,
     $name: name,
   };
-  var updateStr = 'INSERT OR REPLACE INTO ';
-  var valuesStr = ' (Folder_Id, File_Name, Long, Chars, Spaces) VALUES ($folder, $name, $long, $chars, $spaces);';
   setIssueParams(updateParams, issuesArray);
   setForeignKeysPragma();
 
-  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+  db.run(query.insert.file.issue(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store issues error: " + err);
     }
@@ -395,16 +338,13 @@ function setIssueParams(params, issueArr) {
 }
 
 function storeDirClass(classification, dirId, onDoneCallback) {
-  var mainTable = TABLE_DIR_CLASS;
   var updateParams = {
     $id: dirId,
     $class: CLASS_ENUM[classification]
   };
-  var updateStr = 'INSERT OR REPLACE INTO ';
-  var valuesStr = ' (Dir_Id, Class) VALUES ($id, $class);';
   setForeignKeysPragma();
 
-  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+  db.run(query.insert.dir.class(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store class error: " + err);
     }
@@ -415,17 +355,14 @@ function storeDirClass(classification, dirId, onDoneCallback) {
 }
 
 function storeFileClass(classification, folderId, name, onDoneCallback) {
-  var mainTable = TABLE_FILE_CLASS;
   var updateParams = {
     $folder: folderId,
     $name: name,
     $class: CLASS_ENUM[classification]
   };
-  var updateStr = 'INSERT OR REPLACE INTO ';
-  var valuesStr = ' (Folder_Id, File_Name, Class) VALUES ($folder, $name, $class);';
   setForeignKeysPragma();
 
-  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+  db.run(query.insert.file.class(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store class error: " + err);
     }
@@ -487,16 +424,13 @@ function loadIncompleteProgress(type, onFinish) {
 }
 
 function storeDirectoryProgress(dirId, done, onFinish) {
-  var mainTable = TABLE_DIR_PROGRESS;
   var updateParams = {
     $dir: dirId,
-    $done: done,
+    $done: done
   };
-  var updateStr = 'INSERT OR REPLACE INTO ';
-  var valuesStr = ' (Dir_Id, Done) VALUES ($dir, $done);';
   setForeignKeysPragma();
 
-  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+  db.run(query.insert.dir.progress(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store progress error: " + err);
     }
@@ -507,17 +441,14 @@ function storeDirectoryProgress(dirId, done, onFinish) {
 }
 
 function storeFileProgress(dirId, fileName, done, onFinish) {
-  var mainTable = TABLE_FILE_PROGRESS;
   var updateParams = {
     $id: dirId,
     $done: done,
-    $name: fileName,
+    $name: fileName
   };
-  var updateStr = 'INSERT OR REPLACE INTO ';
-  var valuesStr = ' (Folder_Id, Name, Done) VALUES ($id, $name, $done);';
   setForeignKeysPragma();
 
-  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+  db.run(query.insert.file.progress(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store progress error: " + err);
     }
@@ -528,17 +459,14 @@ function storeFileProgress(dirId, fileName, done, onFinish) {
 }
 
 function storeDirectoryFailure(dirId, errNum, errTxt, onFinish) {
-  var mainTable = TABLE_DIR_ERROR;
   var updateParams = {
     $dir: dirId,
     $num: errNum,
     $txt: errTxt
   };
-  var updateStr = 'INSERT OR REPLACE INTO ';
-  var valuesStr = ' (Dir_Id_Num, Error_Code, Error_Blob) VALUES ($dir, $num, $txt);';
   setForeignKeysPragma();
 
-  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+  db.run(query.insert.dir.error(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store failure error: " + err);
     }
@@ -550,16 +478,13 @@ function storeDirectoryFailure(dirId, errNum, errTxt, onFinish) {
 
 function removeDirectoryFailure(dirNum, onFinish) {
   console.log("removing dir error");
-  var mainTable = TABLE_DIR_ERROR;
-  var deleteStr = 'DELETE FROM ';
-  var whereStr = ' WHERE Dir_Id_Num IS $dirNum;';
   var params = {
     $dirNum: dirNum
   };
 
   setForeignKeysPragma();
 
-  db.run(deleteStr + mainTable + whereStr, params, function(err) {
+  db.run(query.delete.dir.error(), params, function(err) {
     if (err) {
       throw new Error("Db.delete dir failure error: " + err);
     }
@@ -571,9 +496,6 @@ function removeDirectoryFailure(dirNum, onFinish) {
 
 function removeFileFailure(folderId, filename, onFinish) {
   console.log("removing file error");
-  var mainTable = TABLE_FILE_ERROR;
-  var deleteStr = 'DELETE FROM ';
-  var whereStr = ' WHERE Folder_Id IS $folderId AND Name IS $name;';
   var params = {
     $folderId: folderId,
     $name: filename
@@ -581,7 +503,7 @@ function removeFileFailure(folderId, filename, onFinish) {
 
   setForeignKeysPragma();
 
-  db.run(deleteStr + mainTable + whereStr, params, function(err) {
+  db.run(query.delete.file.error(), params, function(err) {
     if (err) {
       throw new Error("Db.delete file failure error: " + err);
     }
@@ -592,20 +514,17 @@ function removeFileFailure(folderId, filename, onFinish) {
 }
 
 function storeFileFailure(dirId, fileName, errNum, errTxt, onFinish) {
-  var mainTable = TABLE_FILE_ERROR;
   var updateParams = {
     $dir: dirId,
     $name: fileName,
     $num: errNum,
     $txt: errTxt
   };
-  var updateStr = 'INSERT OR REPLACE INTO ';
-  var valuesStr = ' (Folder_Id, Name, Error_Code, Error_Blob) VALUES ($dir, $name, $num, $txt);';
   setForeignKeysPragma();
 
-  db.run(updateStr + mainTable + valuesStr, updateParams, function(err) {
+  db.run(query.insert.file.error(), updateParams, function(err) {
     if (err) {
-      throw new Error("Db.store failure error: [" + updateStr + mainTable + valuesStr + "]" + err);
+      throw new Error("Db.store failure error: " + err);
     }
     if (onFinish) {
       onFinish();
@@ -614,10 +533,11 @@ function storeFileFailure(dirId, fileName, errNum, errTxt, onFinish) {
 }
 
 function loadDirFailures(onFinish) {
-  var query = 'SELECT * FROM Directories d JOIN Directory_Issues di ON d.Sys_Id_Num = di.DirId JOIN Directory_Class dc ON d.Sys_Id_Num = dc.Dir_Id JOIN Directory_Failures df ON d.Sys_Id_Num = df.Dir_Id_Num';
-  db.all(query, [], function(err, rows) {
+  var sql = query.load.dir.dir();
+  query += ' JOIN Directory_Failures df ON d.Sys_Id_Num = df.Dir_Id_Num';
+  db.all(sql, [], function(err, rows) {
     if (err) {
-      throw new Error("Db.loadDirFailures failure error: [" + query + "]; " + err);
+      throw new Error("Db.loadDirFailures failure error: [" + sql + "]; " + err);
     }
     if (onFinish) {
       onFinish(rows);
@@ -626,10 +546,11 @@ function loadDirFailures(onFinish) {
 }
 
 function loadFileFailures(onFinish) {
-  var query = 'SELECT * FROM Files f JOIN File_Failures ff ON f.Folder_Id = ff.Folder_Id AND f.Name = ff.Name JOIN File_Issues fi ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name JOIN File_Class fc ON f.Folder_Id = fc.Folder_id AND f.Name = fc.File_Name';
-  db.all(query, [], function(err, rows) {
+  var sql = query.load.file.file();
+  sql += ' JOIN File_Failures ff ON f.Folder_Id = ff.Folder_Id AND f.Name = ff.Name';
+  db.all(sql, [], function(err, rows) {
     if (err) {
-      throw new Error("Db.loadDirFailures failure error: [" + query + "]; " + err);
+      throw new Error("Db.loadDirFailures failure error: [" + sql + "]; " + err);
     }
     if (onFinish) {
       onFinish(rows);
@@ -638,10 +559,12 @@ function loadFileFailures(onFinish) {
 }
 
 function loadDirsMissingRemoteIds(onFinish) {
-  var query = "SELECT * FROM Directories d JOIN Directory_Issues di ON d.Sys_Id_Num = di.DirId LEFT JOIN Directory_Failures df ON d.Sys_Id_Num = df.Dir_id_Num LEFT JOIN Directory_Progress dp ON d.Sys_Id_Num = dp.Dir_Id WHERE df.Error_Code IS NULL AND d.Remote_ID IS  'unknown' AND (di.Long IS 0 AND di.Chars IS 0 AND di.Spaces IS 0) AND Done IS NOT NULL";
-  db.all(query, [], function(err, rows) {
+  var sql = query.load.file.file();
+  sql += ' LEFT JOIN Directory_Progress dp ON d.Sys_Id_Num = dp.Dir_Id';
+  sql += " WHERE df.Error_Code IS NULL AND d.Remote_ID IS  'unknown' AND (di.Long IS 0 AND di.Chars IS 0 AND di.Spaces IS 0) AND Done IS NOT NULL";
+  db.all(sql, [], function(err, rows) {
     if (err) {
-      throw new Error("Db.loadDirsMissingRemoteIds failure error: [" + query + "]; " + err);
+      throw new Error("Db.loadDirsMissingRemoteIds failure error: [" + sql + "]; " + err);
     }
     if (onFinish) {
       onFinish(rows);
@@ -658,9 +581,9 @@ function storeVar(name, value, onFinish) {
   var valuesStr = ' (Name, Value) VALUES ($name, $val);';
   setForeignKeysPragma();
 
-  db.run(updateStr + TABLE_VARS + valuesStr, updateParams, function(err) {
+  db.run(query.insert.var.var(), updateParams, function(err) {
     if (err) {
-      throw new Error("Db.store vars error: [" + updateStr + TABLE_VARS + valuesStr + "]" + err);
+      throw new Error("Db.store vars error: " + err);
     }
     if (onFinish) {
       onFinish();
@@ -669,9 +592,9 @@ function storeVar(name, value, onFinish) {
 }
 
 function loadVars(onFinish) {
-  var query = 'SELECT * FROM ' + TABLE_VARS;
+  var stmt = query.load.var.var();
 
-  db.all(query, [], function(err, rows) {
+  db.all(stmt, [], function(err, rows) {
     if (err) {
       throw new Error("Db.loadVars error: " + err);
     }
@@ -749,6 +672,7 @@ function storeWorker(properties, doneCallback) {
   }
 }
 
+
 // This is not very parallel safe.  Or, rather, "prepareStatements" isn't very safe.
 FilesDb.store = function(type, classification, itemInfo, doneCallback) {
   if (!stmtDir || !stmtFile) {
@@ -783,11 +707,7 @@ FilesDb.loadSingleProgress = function(type, callback) {
 };
 
 FilesDb.loadFilesWithRemoteIds = function(callback) {
-  var stmt = 'SELECT * FROM ' + TABLE_FILES + ' f INNER JOIN ' + TABLE_FILE_CLASS + ' fc ';
-  stmt += 'ON f.Folder_Id = fc.Folder_Id AND f.Name = fc.File_Name ';
-  stmt += 'INNER JOIN ' + TABLE_FILE_ISSUES + ' fi ';
-  stmt += 'ON f.Folder_Id = fi.Folder_Id AND f.Name = fi.File_Name';
-  stmt += 'INNER JOIN ' + TABLE_FILE_PROGRESS + ' fp ';
+  var stmt = query.load.file.file();
 
   stmt += ' WHERE fc.Class = ' + CLASS_ENUM['valid'] + ' AND f.Remote_Id IS NOT "unknown"';
 

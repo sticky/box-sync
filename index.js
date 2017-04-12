@@ -393,7 +393,7 @@ callbacks.onFileData = function(chunk) {
 callbacks.onFileEnd = function() {};
 
 function uploadNextDirOnBox(callback) {
-  diskState.getIncomplete('dir', function(dirs) {
+  diskState.getFirstIncomplete('dir', function(dirs) {
     if (dirs === false)  {
       // Fake the root directory as a starting point.
       dirs = [new StickyDirInfo({inode: 'noparent', parent: 'noparent'})];
@@ -415,7 +415,7 @@ function uploadNextDirOnBox(callback) {
 // Some files don't exist initially but are created to account for problems,
 // like Mac bundles (apps) or folder conflicts.
 function uploadSpareFiles(callback) {
-  diskState.getIncomplete('file', function(files) {
+  diskState.getFirstIncomplete('file', function(files) {
     putFilesOnBox(files, callback);
   });
 }
