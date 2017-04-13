@@ -393,7 +393,12 @@ callbacks.onFileData = function(chunk) {
 callbacks.onFileEnd = function() {};
 
 function uploadNextDirOnBox(callback) {
-  diskState.getFirstIncomplete('dir', function(dirs) {
+  // We are only grabbing a single incomplete directory because if we get ahead of ourselves, we risk trying to
+  // upload multiple directories whose parents have not been created yet.
+  // ... at least, I think that was the idea.
+  diskState.getFirstIncomplete('dir', function(err, dirs) {
+
+    // getFirstIncomplete returns false if we're totally fresh.
     if (dirs === false)  {
       // Fake the root directory as a starting point.
       dirs = [new StickyDirInfo({inode: 'noparent', parent: 'noparent'})];
@@ -415,7 +420,7 @@ function uploadNextDirOnBox(callback) {
 // Some files don't exist initially but are created to account for problems,
 // like Mac bundles (apps) or folder conflicts.
 function uploadSpareFiles(callback) {
-  diskState.getFirstIncomplete('file', function(files) {
+  diskState.getAllIncomplete('file', function(err, files) {
     putFilesOnBox(files, callback);
   });
 }
@@ -480,6 +485,8 @@ function retryErroredContent(callback) {
   tasks.push(retryErroredFiles);
   if (program.shouldCorrectInvalids) {
     tasks.push(tryToUploadInvalidFiles);
+  } else {
+    console.log("skipping invalids.");
   }
 
   async.series(tasks, function() {

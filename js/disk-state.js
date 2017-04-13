@@ -230,7 +230,83 @@ DiskState.prototype.removeFileError = function(folderId, name, callback) {
 };
 
 DiskState.prototype.getFirstIncomplete = function(type, completeCallback) {
+  getIncomplete(type, true, completeCallback);
+
+};
+
+DiskState.prototype.getAllIncomplete = function(type, completeCallback) {
+  getIncomplete(type, false, completeCallback);
+};
+
+function getIncomplete(type, onlySingle, completeCallback) {
+  // We've got a progress query to do, and we need follow up with doing a full dir/file DB query
+  // from the unfinished query result.
+  // Code outside of DiskState doesn't deal with raw rows, either, so we need to convert to
+  // a FileInfo or a DirInfo.
+  async.waterfall([
+      function(cb) {
+        var limit;
+        if (onlySingle) {
+         limit = 1;
+        }
+        FileDb.loadProgress(type, limit, cb);
+      },
+      function(rows, cb) {
+        var ids = [];
+        // False from loadProgress() indicates a totally fresh start.  Make sure to pass this information along!
+        if (rows === false) {
+          cb(null, false);
+          return;
+        } else if(!rows || rows.length <= 0) {
+          // Undefined or null?  Totally empty?  Nothing left to do.
+          cb(null, null);
+          return;
+        }
+
+        rows.forEach(function(row) {
+          ids.push(getIdsFromProgressRow(row, type));
+        });
+
+        // FileDb has some code that doesn't abide by the typical Node.js callback(err, results).
+        // So I am translating the resuls of loadByIds to the proper paradigm.
+        FileDb.loadByIds(type, ids, function(results) {
+          cb(null, results);
+        });
+      },
+      function(fullRows, cb) {
+        var items;
+
+        // This could be null or false, which needs to be passed to the final callback because the difference
+        // between false and null/undefined is important to external code.
+        //
+        if (!fullRows) {
+          cb(null, fullRows);
+          return;
+        }
+
+        items = getRealObjectsFromDbRows(type, fullRows);
+        cb(null, items);
+      }
+    ],
+    function(err, results) {
+      completeCallback(err, results);
+  });
+}
+
+function getIdsFromProgressRow(progressRow, type) {
+  switch(type) {
+    case 'file':
+      return {'folder': progressRow.Folder_Id, 'name': progressRow.Name};
+      break;
+    case 'dir':
+      return {'id': progressRow.Dir_Id};
+      break;
+  }
+}
+
+function getRealObjectsFromDbRows(type, rows) {
   var rowProcessFunc;
+  var objects = [];
 
   switch(type) {
     case 'dir':
@@ -240,23 +316,15 @@ DiskState.prototype.getFirstIncomplete = function(type, completeCallback) {
       rowProcessFunc = dbRowToFile;
       break;
     default:
-      throw new Error("getFirstIncomplete:: Unrecognized type requested. (" + type + ")");
+      throw new Error("getRealObjectsFromDbRows:: Unrecognized type requested. (" + type + ")");
   }
 
-  FileDb.loadSingleProgress(type, function(row) {
-    var item;
-    if (row === false) {
-      completeCallback(false);
-      return;
-    } else if(!row) {
-      // Undefined or null?  Probably nothing unfinished on the list.
-      completeCallback();
-      return;
-    }
-    item = [rowProcessFunc(row)];
-    completeCallback(item);
+  rows.forEach(function(row) {
+    objects.push(rowProcessFunc(row));
   });
-};
+
+  return objects;
+}
 
 DiskState.prototype.getUnfinishedInvalidFiles = function(completeCallback) {
   FileDb.loadAll('file', 'bad', function(rows) {

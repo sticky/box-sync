@@ -7,18 +7,6 @@ var query = require('./query-builder');
 // run.  Plus, we don't have table creation queries.
 var db = new sqlite3.Database(__dirname + '/../files-db.sqlite', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE);
 
-var TABLE_DIRS = 'Directories';
-var TABLE_FILES = 'Files';
-var TABLE_VARS = 'Misc_Vars';
-var TABLE_DIR_ISSUES = 'Directory_Issues';
-var TABLE_DIR_CLASS = 'Directory_Class';
-var TABLE_FILE_ISSUES = 'File_Issues';
-var TABLE_FILE_CLASS = 'File_Class';
-var TABLE_DIR_PROGRESS = 'Directory_Progress';
-var TABLE_FILE_PROGRESS = 'Files_Progress';
-var TABLE_DIR_ERROR = 'Directory_Failures';
-var TABLE_FILE_ERROR = 'File_Failures';
-
 var stmtDir;
 var stmtFile;
 var queue = async.queue(storeWorker, 100); // This might need to be fiddled with.
@@ -54,7 +42,10 @@ function prepareStatements(callback) {
 
 function finishPreparing(callback) {
   stmtDir = db.prepare(query.insert.dir.dir(),
-  [], function() {
+  [], function(err) {
+    if (err) {
+      throw err;
+    }
     stmtFile = db.prepare(query.insert.file.file(), [], callback);
   });
 }
@@ -184,6 +175,24 @@ function loadDirs(classification, onFinish) {
   });
 }
 
+function loadDirsById(ids, onFinish) {
+  var stmt = query.load.dir.full();
+  var idList = ids.map(function(id){ return id.id; }).join(',');
+  var params = {
+    $ids: idList
+  };
+
+  stmt  += ' WHERE Sys_Id_Num IN ($ids)'
+  db.all(stmt, params, function(err, rows) {
+    if (err) {
+      throw new Error("Db.loadDirsById error: " + err);
+    }
+    if (onFinish) {
+      onFinish.call(this, rows);
+    }
+  });
+}
+
 function loadDirContents(dirId, what, classification, callback) {
   switch(what) {
     case 'dir':
@@ -288,6 +297,26 @@ function loadFiles(classification, onFinish) {
   });
 }
 
+function loadFilesById(ids, onFinish) {
+  var stmt = query.load.file.full();
+  var folderIds = ids.map(function(id){ return id.folder; }).join(',');
+  var fileNames = ids.map(function(id){ return id.name; }).join(',');
+  var params = {
+    $fids: folderIds,
+    $nids: fileNames
+  };
+
+  stmt  += ' WHERE f.Folder_Id IN ($fids) AND f.Name IN ($nids)';
+  db.all(stmt, params, function(err, rows) {
+    if (err) {
+      throw new Error("Db.loadDirsById error: " + err);
+    }
+    if (onFinish) {
+      onFinish.call(this, rows);
+    }
+  });
+}
+
 function storeDirIssues(idNum, issueArr, onDoneCallback) {
   var updateParams = {
     $id: idNum
@@ -368,57 +397,6 @@ function storeFileClass(classification, folderId, name, onDoneCallback) {
     }
     if (onDoneCallback) {
       onDoneCallback();
-    }
-  });
-}
-
-function loadIncompleteProgress(type, onFinish) {
-  var query = 'SELECT * FROM ';
-  var countQuery = 'SELECT COUNT(*) FROM ';
-  var where = '';
-  var totalProgressRows;
-  var result;
-  switch(type) {
-    case 'file':
-      query += TABLE_FILE_PROGRESS;
-      countQuery += TABLE_FILE_PROGRESS;
-      where = ' WHERE Done = 0';
-      break;
-    case 'dir':
-      query += TABLE_DIR_PROGRESS;
-      countQuery += TABLE_DIR_PROGRESS;
-      where = ' WHERE Done = 0';
-      break;
-    default:
-      throw new Error("Db.loadIncompleteProgress error: unrecognized type '" + type + "'");
-  }
-
-  async.series([
-    function(callback) {
-      db.get(countQuery, function(err, row) {
-        if (err) {
-          throw new Error("Db.loadIncompleteProgress error: " + err);
-        }
-
-        totalProgressRows = row['COUNT(*)'];
-        callback();
-      });
-    },
-    function(callback) {
-      db.get(query + where, function(err, row) {
-        if (err) {
-          throw new Error("Db.loadIncompleteProgress error: " + err);
-        }
-        result = row;
-        callback.call(this, row);
-      });
-    },
-  ], function(err) {
-    if (totalProgressRows == 0) {
-      result = false;
-    }
-    if (onFinish) {
-      onFinish.call(this, result);
     }
   });
 }
@@ -684,24 +662,72 @@ FilesDb.store = function(type, classification, itemInfo, doneCallback) {
   }
 };
 
-FilesDb.loadSingleDirProgress = function(callback) {
-  loadIncompleteProgress('dir', function(row) {
-    if (row && row.Dir_Id) {
-      loadSingleDir(row.Dir_Id, callback);
-    } else {
-      callback(row);
-    }
-  });
-};
+/**
+ *  Get progress rows for a file or a directory.
+ *
+ * @param type
+ *  One of either 'file' or 'dir'.
+ * @param limit
+ *  An optional numeral that indicates how many rows to grab.  Specify as a false value to get everything.
+ * @param callback
+ *  Results can be an array of rows, or it can be a boolean.  False signifies that there aren't any progress rows
+ *  to speak of, that we're totally fresh.
+ */
+FilesDb.loadProgress = function(type, limit, callback) {
+  var sql;
+  var countQuery;
+  var where = '';
+  var limit = limit ? ' LIMIT ' + limit : '';
+  switch(type) {
+    case 'file':
+      sql = query.load.file.progress();
+      countQuery = query.count.file.progress();
+      where = ' WHERE Done = 0';
+      break;
+    case 'dir':
+      sql = query.load.dir.progress();
+      countQuery = query.count.dir.progress();
+      where = ' WHERE Done = 0';
+      break;
+    default:
+      throw new Error("Db.loadIncompleteProgress error: unrecognized type '" + type + "'");
+  }
 
-FilesDb.loadSingleProgress = function(type, callback) {
-  loadIncompleteProgress(type, function(row) {
-    if (type == 'dir' && row && row.Dir_Id) {
-      loadSingleDir(row.Dir_Id, callback);
-    } else if (type == 'file' && row && row.Folder_Id && row.Name) {
-      loadSingleFile(row.Folder_Id, row.Name, callback);
-    } else {
-      callback(row);
+  async.series([
+    function(callback) {
+      db.get(countQuery, function(err, row) {
+        if (err) {
+          throw new Error("Db.loadIncompleteProgress error: " + err);
+        }
+
+        callback(null, row['COUNT(*)']);
+      });
+    },
+    function(callback) {
+      db.all(sql + where + limit, function(err, rows) {
+        if (err) {
+          throw new Error("Db.loadIncompleteProgress error: " + err);
+        }
+        callback(err, rows);
+      });
+    },
+  ], function(err, res) {
+    var totalProgressRows;
+    var result;
+
+    if (err) {
+      throw err;
+    }
+
+    totalProgressRows = res[0];
+    result = res[1];
+
+    // Not only did we get no results, there were no results to give.  Tell external code we're totally fresh.
+    if (totalProgressRows == 0) {
+      result = false;
+    }
+    if (callback) {
+      callback(err, result);
     }
   });
 };
@@ -720,6 +746,34 @@ FilesDb.loadFilesWithRemoteIds = function(callback) {
       callback.call(this, rows);
     }
   });
+};
+
+
+FilesDb.loadByIds = function(type, ids, callback) {
+  if (!Array.isArray(ids)) {
+    callback(new Error("loadByIds():: Ids array required"));
+    return;
+  }
+
+  if (ids.length <= 0) {
+    callback(null, []);
+    return;
+  }
+
+  switch(type) {
+    case 'dir':
+      loadDirsById(ids, callback);
+      break;
+    case 'file':
+      loadFilesById(ids, callback);
+      break;
+    case 'var':
+      loadVars(callback);
+      console.warn("Individual var loading by ID not supported yet.");
+      break;
+    default:
+      throw Error("FilesDb.store::: Invalid type.");
+  }
 };
 
 FilesDb.loadAll = function(type, classification, callback) {

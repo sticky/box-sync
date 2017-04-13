@@ -292,7 +292,7 @@ function fixDirError(info, errorNum, callback) {
     console.log("Retying");
     retryBadUpload(info, callback);
   } else if (errorNum == 404 || errorNum == 'pre-404') {
-    console.log("fixing DIR error 404");
+    console.log("fixing FILE error 404: " + info.dir.path + '/' + info.dir.name);
     // Currently the only recognized case of a 404 file is if the parent directory has ended up getting rolled into
     // a zip file.
     maybeMarkDirAsZipped(info, function(err, dir) {
@@ -332,7 +332,7 @@ function fixFileError(info, errorNum, callback) {
       ], callback);
     });
   } else if (errorNum == 404 || errorNum == 'pre-404') {
-    console.log("fixing FILE error 404");
+    console.log("fixing FILE error 404: " + info.file.path + '/' + info.file.name);
     // Currently the only recognized case of a 404 file is if the parent directory has ended up getting rolled into
     // a zip file.
     maybeMarkFileAsZipped(info, function(err, file) {
