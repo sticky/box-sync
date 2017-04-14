@@ -512,7 +512,7 @@ function storeFileFailure(dirId, fileName, errNum, errTxt, onFinish) {
 
 function loadDirFailures(onFinish) {
   var sql = query.load.dir.dir();
-  query += ' JOIN Directory_Failures df ON d.Sys_Id_Num = df.Dir_Id_Num';
+  sql += ' JOIN Directory_Failures df ON d.Sys_Id_Num = df.Dir_Id_Num';
   db.all(sql, [], function(err, rows) {
     if (err) {
       throw new Error("Db.loadDirFailures failure error: [" + sql + "]; " + err);
@@ -537,7 +537,8 @@ function loadFileFailures(onFinish) {
 }
 
 function loadDirsMissingRemoteIds(onFinish) {
-  var sql = query.load.file.file();
+  var sql = query.load.dir.dir();
+  sql += ' LEFT JOIN Directory_Failures df ON d.Sys_Id_Num = df.Dir_Id_Num';
   sql += ' LEFT JOIN Directory_Progress dp ON d.Sys_Id_Num = dp.Dir_Id';
   sql += " WHERE df.Error_Code IS NULL AND d.Remote_ID IS  'unknown' AND (di.Long IS 0 AND di.Chars IS 0 AND di.Spaces IS 0) AND Done IS NOT NULL";
   db.all(sql, [], function(err, rows) {
@@ -555,8 +556,6 @@ function storeVar(name, value, onFinish) {
     $name: name,
     $val: value,
   };
-  var updateStr = 'INSERT OR REPLACE INTO ';
-  var valuesStr = ' (Name, Value) VALUES ($name, $val);';
   setForeignKeysPragma();
 
   db.run(query.insert.var.var(), updateParams, function(err) {
