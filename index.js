@@ -259,9 +259,9 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
   if (response && response.entries && response['total_count'] === 1) {
     file.remoteId = response.entries[0].id;
   }
-
   // Error responses should be fixed, if possible.
   if (error) {
+    utils.generalErrorTouchup(error);
     tasks.push(function (callback) {
       uploadCounts.badFiles += 1;
       if (ErrorFixer.canFixError('file', error.statusCode, error.message)) {
@@ -499,12 +499,12 @@ function compareWithExistingUploads(callback) {
     var tasks = [];
     if (failureGroups['409']) {
       tasks.push(function(cb) {
-        retryFile409(failureGroups['409'], cb);
+        retryFiles(failureGroups['409'], cb);
       });
     }
     if (failureGroups['pre-409']) {
       tasks.push(function(cb) {
-        retryFile409(failureGroups['pre-409'], cb);
+        retryFiles(failureGroups['pre-409'], cb);
       });
     }
     async.series(tasks, callback);
@@ -567,18 +567,67 @@ function retryMissedDirectories(callback) {
 }
 
 function retryErroredFiles(callback) {
+  // Whitelist which files we'll be retrying.  Some problems will be a simple "try again" because of internet weirdness
+  // and some have fixes built in for Error-fixer.  Don't add any items here that aren't simple retries or which aren't
+  // handled in ErrorFixer.
+
   diskState.getFileFailures(function(err, failureGroups) {
     var tasks = [];
     if (failureGroups['404']) {
       tasks.push(function(cb) {
-        retryFile404(failureGroups['404'], cb);
+        retryFiles(failureGroups['404'], cb);
       });
     }
     if (failureGroups['pre-404']) {
       tasks.push(function(cb) {
-        retryFile404(failureGroups['pre-404'], cb);
+        retryFiles(failureGroups['pre-404'], cb);
       });
     }
+
+
+    // Weird server glitches we can't really control.
+    if (failureGroups['pre-502']) {
+      tasks.push(function(cb) {
+        retryFiles(failureGroups['502'], cb);
+      });
+    }
+    if (failureGroups['502']) {
+      tasks.push(function(cb) {
+        retryFiles(failureGroups['502'], cb);
+      });
+    }
+
+    // Weird server glitches we can't really control.
+    if (failureGroups['pre-500']) {
+      tasks.push(function(cb) {
+        retryFiles(failureGroups['500'], cb);
+      });
+    }
+    if (failureGroups['500']) {
+      tasks.push(function(cb) {
+        retryFiles(failureGroups['500'], cb);
+      });
+    }
+
+    // Weird system glitches: socket timeouts, EPIPE failures...
+    if (failureGroups['SYS']) {
+      tasks.push(function(cb) {
+        retryFiles(failureGroups['SYS'], cb);
+      });
+    }
+
+    // We were just going a little too fast...
+    if (failureGroups['429']) {
+      tasks.push(function(cb) {
+        retryFiles(failureGroups['429'], cb);
+      });
+    }
+    if (failureGroups['pre-429']) {
+      tasks.push(function(cb) {
+        retryFiles(failureGroups['pre-429'], cb);
+      });
+    }
+
     async.series(tasks, callback);
   });
 }
@@ -613,17 +662,7 @@ function retryDir404s(dirs, callback) {
   });
 }
 
-function retryFile409(files, callback) {
-  putFilesOnBox(files, function(err) {
-    if (err) {
-      // Errors should be caught by now.  If they haven't been, we need to stop.
-      throw err;
-    }
-    callback();
-  });
-}
-
-function retryFile404(files, callback) {
+function retryFiles(files, callback) {
   putFilesOnBox(files, function(err) {
     if (err) {
       // Errors should be caught by now.  If they haven't been, we need to stop.

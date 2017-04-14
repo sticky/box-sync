@@ -63,7 +63,7 @@ your Box.com app, and you will be copying a URL parameter into your terminal win
 
 # Usage
 
-Run: node --max_old_space_size=4096 index.js -- [flags] <folder> <BoxFolderId>
+Run: node --max_old_space_size=4096 index.js flags] <folder> <BoxFolderId>
 
 When the script starts, it will prompt you to visit a URL and authorize the app to use your credentials.
 
