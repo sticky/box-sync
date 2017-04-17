@@ -21,21 +21,27 @@ module.exports = {
       'Z';
   },
   generalErrorTouchup: function(error) {
+    var genericError = error.statusCode == 400 || error.statusCode == 'pre-400';
+    var responseBody = error.response ? error.response.body : null;
     if (!error.statusCode) {
       error.statusCode = 'SYS';
     }
 
+    // Try to get more information from generic errors like 400s.  "Bad Request" is not an actionable level of detail.
+    if (genericError && responseBody && responseBody.context_info) {
+      error.message += " Context: [ reason: " + responseBody.context_info.reason + ", message: " + responseBody.context_info.message + " ]";
+    }
 
     // We don't want to keep trying if we're not even authenticated correctly.
     // But try to avoid other random "bad request" messages.
     // It should always be 401, but this was seen as 400 during development, as well.
-    var possibleAuthIssue = error.statusCode == 400 || error.statusCode == 'pre-400' || error.statusCode == 401 || error.statusCode == 'pre-401';
+    var possibleAuthIssue = genericError || error.statusCode == 401 || error.statusCode == 'pre-401';
 
     var messages = [error.message];
-    if (error.response.body && error.response.body.error) {
+    if (responseBody && responseBody.error) {
       // These always go in pairs.... right?
-      messages.push(error.response.body.error);
-      messages.push(error.response.body.error_description);
+      messages.push(responseBody.error);
+      messages.push(responseBody.error_description);
     }
 
     if (possibleAuthIssue) {

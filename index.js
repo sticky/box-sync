@@ -497,6 +497,7 @@ function retryErroredContent(callback) {
 function compareWithExistingUploads(callback) {
   diskState.getFileFailures(function(err, failureGroups) {
     var tasks = [];
+
     if (failureGroups['409']) {
       tasks.push(function(cb) {
         retryFiles(failureGroups['409'], cb);
@@ -573,6 +574,17 @@ function retryErroredFiles(callback) {
 
   diskState.getFileFailures(function(err, failureGroups) {
     var tasks = [];
+    if (failureGroups['400']) {
+      tasks.push(function(cb) {
+        retryFiles(failureGroups['400'], cb);
+      });
+    }
+    if (failureGroups['pre-400']) {
+      tasks.push(function(cb) {
+        retryFiles(failureGroups['pre-400'], cb);
+      });
+    }
+
     if (failureGroups['404']) {
       tasks.push(function(cb) {
         retryFiles(failureGroups['404'], cb);
