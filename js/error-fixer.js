@@ -111,7 +111,7 @@ function correctDirRemoteId(issueInfo, callback) {
     function(cb) {
       // Step 4: Save our new remote ID.
       dir.remoteId = newRemoteId;
-      store.storeDir('valid', dir, cb);
+      store.storeDir(store.CLASS.VALID, dir, cb);
     }
   ], function(err) {
     callback(err, newRemoteId);
@@ -134,7 +134,7 @@ function createZipofDirAndSaveToStorage(issueInfo, callback) {
     console.log("zip file completed");
     async.series([
       function(cb) {
-        store.storeFile('valid', file, cb);
+        store.storeFile(store.CLASS.VALID, file, cb);
       },
       function(cb) {
         // Make sure our new file doesn't get lost in the hustle and bustle.
@@ -142,7 +142,7 @@ function createZipofDirAndSaveToStorage(issueInfo, callback) {
       },
       function (cb) {
         dir.remoteId = 'zipfile';
-        store.storeDir('valid', dir, cb);
+        store.storeDir(store.CLASS.VALID, dir, cb);
       }
     ], callback);
   });
@@ -304,7 +304,7 @@ function fixDirError(info, errorNum, callback) {
 
       async.series([
         function(cb) {
-          store.storeDir('valid', dir, cb);
+          store.storeDir(store.CLASS.VALID, dir, cb);
         },
         function(cb) {
           store.removeDirError(dir.localId, cb);
@@ -327,7 +327,7 @@ function fixFileError(info, errorNum, callback) {
       info.file.remoteId = remoteId;
       async.series([
         function(cb) {
-          store.storeFile('valid', info.file, cb);
+          store.storeFile(store.CLASS.VALID, info.file, cb);
         },
       ], callback);
     });
@@ -344,7 +344,7 @@ function fixFileError(info, errorNum, callback) {
 
       async.series([
         function(cb) {
-          store.storeFile('valid', file, cb);
+          store.storeFile(store.CLASS.VALID, file, cb);
         },
       ], callback);
     });

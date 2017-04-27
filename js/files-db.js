@@ -24,6 +24,12 @@ var CLASS_ENUM  = {
 
 var FilesDb = module.exports;
 
+FilesDb.CLASS = {
+  VALID: 'valid',
+  INVALID: 'bad',
+  FAILED: 'failed'
+};
+
 function setForeignKeysPragma(callback) {
   db.run('PRAGMA foreign_keys = true;', callback);
 }
@@ -209,16 +215,6 @@ function loadDirContents(dirId, what, classification, callback) {
       throw new Error("loadDirContents: unrecognized type.  (" + what + ")");
       break;
   }
-}
-
-function loadDirsWithParent(dirId, classification, callback) {
-  console.warn("Deprecated: loadDirsWithParent");
-  loadFromParent('dir', dirId, classification, callback);
-}
-
-function loadFilesWithParent(dirId, classification, callback) {
-  console.warn("Deprecated: loadFilesWithParent");
-  loadFromParent('file', dirId, classification, callback);
 }
 
 function loadFromParent(type, parentId, classification, callback) {

@@ -95,7 +95,7 @@ callbacks.onDirectoryStarted = function (path) {
 callbacks.onBadDirectory = function (dirInfo, callback) {
   var cols = UI.getStrWidth();
   validCounts.read += 1;
-  diskState.storeDir('bad', dirInfo, function(err) {
+  diskState.storeDir(diskState.CLASS.INVALID, dirInfo, function(err) {
     if (err) {
       throw err;
     }
@@ -112,7 +112,7 @@ callbacks.onBadDirectory = function (dirInfo, callback) {
 callbacks.onBadFile = function (fileInfo, callback) {
   var cols = UI.getStrWidth();
   validCounts.read += 1;
-  diskState.storeFile('bad', fileInfo, function(err) {
+  diskState.storeFile(diskState.CLASS.INVALID, fileInfo, function(err) {
     if (err) {
       throw err;
     }
@@ -128,7 +128,7 @@ callbacks.onValidDir = function (dirInfo, callback) {
   var cols = UI.getStrWidth();
   validCounts.read += 1;
 
-  diskState.storeDir('valid', dirInfo, function(err) {
+  diskState.storeDir(diskState.CLASS.VALID, dirInfo, function(err) {
     if (err) {
       throw err;
     }
@@ -144,7 +144,7 @@ callbacks.onValidDir = function (dirInfo, callback) {
 callbacks.onValidFile = function (fileInfo, callback) {
   var cols = UI.getStrWidth();
   validCounts.read += 1;
-  diskState.storeFile('valid', fileInfo, function(err) {
+  diskState.storeFile(diskState.CLASS.VALID, fileInfo, function(err) {
     if (err) {
       throw err;
     }
@@ -207,7 +207,7 @@ callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
       }
     },
     function(callback) {
-      diskState.storeDir('valid', dir, callback);
+      diskState.storeDir(diskState.CLASS.VALID, dir, callback);
     },
     function(callback) {
       // Have to prep the DB because it doesn't initialize in a parallel-safe way.
@@ -246,7 +246,7 @@ callbacks.onFolderError = function(dir, error, response, completeCallback) {
       }
       uploadCounts.fixedDirs += 1;
       uploadCounts.badDirs -= 1;
-      diskState.storeDir('valid', dir, completeCallback);
+      diskState.storeDir(diskState.CLASS.VALID, dir, completeCallback);
     });
   } else {
     UI.updateUploading({fDirs: uploadCounts.badDirs, sDirs: uploadCounts.goodDirs, fixedDirs: uploadCounts.fixedDirs});
@@ -278,7 +278,7 @@ callbacks.onFileComplete = function(file, error, response, completeCallback) {
       diskState.removeFileError(file.localFolderId, file.name, callback);
     });
     tasks.push(function(callback) {
-      diskState.storeFile('valid', file, callback);
+      diskState.storeFile(diskState.CLASS.VALID, file, callback);
     });
   }
 
@@ -325,7 +325,7 @@ function dealWithFileError(file, error, response, callback) {
     uploadCounts.badFiles -= 1;
     async.series([
       function(cb) {
-        diskState.storeFile('valid', file, cb);
+        diskState.storeFile(diskState.CLASS.VALID, file, cb);
       },
       function(cb) {
         diskState.removeFileError(file.localFolderId, file.name, cb);
@@ -379,7 +379,7 @@ function repairAndConfirmStoredHash(file, hash, callback) {
       console.log("storing error", file.name);
     } else {
       file.hash = hash;
-      diskState.storeFile('valid', file, callback);
+      diskState.storeFile(diskState.CLASS.VALID, file, callback);
     }
   });
 };
@@ -731,9 +731,9 @@ function determineProgramBehaviors(source, freshStart) {
       tasks.push(function(cb){
         uploadSpareFiles(cb);
       });
-      tasks.push(function(cb) {
-        tryToUploadInvalidFiles(cb);
-      });
+      if (program.shouldCorrectInvalids) {
+        tasks.push(tryToUploadInvalidFiles);
+      }
       tasks.push(function(cb) {
         finishUploading(cb);
       });
@@ -881,31 +881,31 @@ function loadPreviousState(doneCallback) {
   var tasks = [];
 
   tasks.push(function(callback) {
-    diskState.loadFiles("bad", function() {
+    diskState.loadFiles(diskState.CLASS.INVALID, function() {
       callback();
     });
   });
 
   tasks.push(function(callback) {
-    diskState.loadDirs("bad", function() {
+    diskState.loadDirs(diskState.CLASS.INVALID, function() {
       callback();
     });
   });
 
   tasks.push(function(callback) {
-    diskState.loadDirs("valid", function() {
+    diskState.loadDirs(diskState.CLASS.VALID, function() {
       callback();
     });
   });
 
   tasks.push(function(callback) {
-    diskState.loadDirs("valid", function() {
+    diskState.loadDirs(diskState.CLASS.VALID, function() {
       callback();
     });
   });
 
   tasks.push(function(callback) {
-    diskState.loadFiles("valid", function() {
+    diskState.loadFiles(diskState.CLASS.VALID, function() {
       callback();
     });
   });

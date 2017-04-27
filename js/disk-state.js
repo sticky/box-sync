@@ -11,6 +11,12 @@ var FileDb = require('./files-db');
 var INIT_VALID_FILES = {files: [], dirs: []};
 var INIT_BADS = {files: [], dirs: [], ignores: []};
 
+var CLASS = {
+  VALID: 'valid',
+  INVALID: 'bad',
+  UNKNOWN: 0
+};
+
 // Will be a dictonary of local ID numbers keying to remote ID number values.
 var folderIdMap = {};
 
@@ -85,6 +91,12 @@ function DiskState() {
   this.bad = INIT_BADS;
 }
 
+DiskState.prototype.CLASS = {
+  UNKNOWN: CLASS.UNKNOWN,
+  INVALID: CLASS.INVALID,
+  VALID: CLASS.VALID
+};
+
 DiskState.prototype.getCurrentValidatorCounts = function() {
   var stats = {
     validFiles: this.valid.files.length,
@@ -151,7 +163,7 @@ DiskState.prototype.loadDirs = function(classification, completeCallback) {
   // Since there is no uniqueness being enforced in our arrays of files and dirs, we need to
   // purge the lists and start from scratch.
   switch(classification) {
-    case 'valid':
+    case CLASS.VALID:
       self.valid.dirs = [];
       break;
     case 'invalid':
@@ -327,7 +339,7 @@ function getRealObjectsFromDbRows(type, rows) {
 }
 
 DiskState.prototype.getUnfinishedInvalidFiles = function(completeCallback) {
-  FileDb.loadAll('file', 'bad', function(rows) {
+  FileDb.loadAll('file', FileDb.CLASS.INVALID, function(rows) {
     var files = [];
     if (!rows) {
       completeCallback(null);
@@ -382,7 +394,7 @@ DiskState.prototype.loadFiles = function(classification, completeCallback) {
   // Since there is no uniqueness being enforced in our arrays of files and dirs, we need to
   // purge the lists and start from scratch.
   switch(classification) {
-    case 'valid':
+    case CLASS.VALID:
       self.valid.files = [];
       break;
     case 'invalid':
