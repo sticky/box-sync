@@ -10,7 +10,7 @@ var StickyFileInfo = require('./js/file-info');
 var StickyDirInfo = require('./js/dir-info');
 var DiskState = require('./js/disk-state');
 var ErrorFixer = require('./js/error-fixer');
-var FileFixer = require('./js/file-fixer');
+var NameFixer = require('./js/name-fixer');
 var utils = require('./js/util');
 
 var validator = require('./js/filename-validator');
@@ -25,8 +25,8 @@ var diskState = new DiskState();
 var uploader = new BoxUploader(diskState);
 ErrorFixer.setBoxUploader(uploader);
 ErrorFixer.setStorage(diskState);
-FileFixer.setBoxUploader(uploader);
-FileFixer.setStorage(diskState);
+NameFixer.setBoxUploader(uploader);
+NameFixer.setStorage(diskState);
 
 var times = {
   start: process.hrtime(),
@@ -75,7 +75,7 @@ program
 
     uploader.rootId = dest;
     ErrorFixer.setRootId(dest);
-    FileFixer.setRootId(dest);
+    NameFixer.setRootId(dest);
 
     uploader.initClient(function(err) {
       if (err) {
@@ -1008,7 +1008,7 @@ function putFilesOnBox(files, doneCallback) {
         file.hash = hash;
 
         if (file.issues.length !== 0) {
-          FileFixer.fixAndUpload(file, {data: callbacks.onFileData, end: callbacks.onFileEnd}, callbacks.onFileComplete, callback);
+          NameFixer.fixAndMarkForUpload('file', file, callback);
           return;
         }
         uploader.makeFile(file, {data: callbacks.onFileData, end: callbacks.onFileEnd}, callbacks.onFileComplete, callback);

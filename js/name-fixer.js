@@ -21,21 +21,32 @@ FileFixer.setRootId = function(id) {
   rootRemoteId = id;
 };
 
-FileFixer.fixAndUpload = function(file, streamHandlers, onFileComplete, callback) {
-  var newName = file.name;
-  var newFile;
+FileFixer.fixAndMarkForUpload = function(type, item, callback) {
+  var newName;
   var valids = utils.validators;
+  var tasks = [];
   var remainingIssues = {
     chars: false,
     space: false,
     length: false
   };
-  if (file.issues.includes("spaces")) {
+
+
+  newName = item.name;
+  if (item.issues.includes("spaces")) {
     newName = newName.trim();
   }
 
-  if (file.issues.includes("chars")) {
+  if (item.issues.includes("chars")) {
     newName = encodeURIComponent(newName);
+  }
+
+  switch(type) {
+    case 'file':
+      tasks = assembleFileRenameTasks(item, newName);
+      break;
+    default:
+      throw new Error("fixAndMarkForUpload:: Unrecognized file type given (" + type + ")");
   }
 
   remainingIssues.chars = valids.badChars(newName) ? true : false;
@@ -43,14 +54,18 @@ FileFixer.fixAndUpload = function(file, streamHandlers, onFileComplete, callback
   remainingIssues.length = valids.badLength(newName) ? true : false;
 
   if (remainingIssues.chars || remainingIssues.space || remainingIssues.length) {
-    store.storeFileError(callback);
     callback(new Error("Unable to fix invalid filename issues in a way that passes our validation specification. [Chars: " + remainingIssues.chars + " Space: " + remainingIssues.space + " Length: " + remainingIssues.length + "]"));
     return;
   }
 
-  async.series([
+  async.series(tasks, callback);
+};
+
+function assembleFileRenameTasks(originalFile, newName) {
+  var newFile;
+  return [
     function(cb) {
-      renameFileAndUpdateDb(file, newName, function(err, replacementFile) {
+      renameFileAndUpdateDb(originalFile, newName, function(err, replacementFile) {
         newFile = replacementFile;
         cb(err);
       });
@@ -60,20 +75,24 @@ FileFixer.fixAndUpload = function(file, streamHandlers, onFileComplete, callback
       store.recordStart('file', newFile, cb);
     },
     function(cb) {
-      file.remoteId = 'renamed';
-      store.storeFile('bad', file, cb);
+      originalFile.remoteId = 'renamed';
+      store.storeFile(store.CLASS.INVALID, originalFile, cb);
     },
     function(cb) {
-      store.recordCompletion('file', file, cb);
+      store.recordCompletion('file', originalFile, cb);
     }
-  ], callback);
-};
-
+  ];
+}
 
 function renameFileAndUpdateDb(currentFile, newName, callback) {
   var newFile = currentFile.duplicate();
   newFile.name = newName;
   newFile.issues = [];
+  newFile.remoteId = null;
+
+  // These timestamps (in current behavior) aren't set until an upload is attempted.
+  newFile.created = null;
+  newFile.updated = null;
   var fullOldPath = currentFile.pathStr + '/' + currentFile.name;
   var fullNewPath = newFile.pathStr + '/' + newFile.name;
 
