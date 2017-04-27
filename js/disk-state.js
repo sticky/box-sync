@@ -261,36 +261,13 @@ function getIncomplete(type, onlySingle, completeCallback) {
         if (onlySingle) {
          limit = 1;
         }
-        FileDb.loadProgress(type, limit, cb);
-      },
-      function(rows, cb) {
-        var ids = [];
-        // False from loadProgress() indicates a totally fresh start.  Make sure to pass this information along!
-        if (rows === false) {
-          cb(null, false);
-          return;
-        } else if(!rows || rows.length <= 0) {
-          // Undefined or null?  Totally empty?  Nothing left to do.
-          cb(null, null);
-          return;
-        }
-
-        rows.forEach(function(row) {
-          ids.push(getIdsFromProgressRow(row, type));
-        });
-
-        // FileDb has some code that doesn't abide by the typical Node.js callback(err, results).
-        // So I am translating the resuls of loadByIds to the proper paradigm.
-        FileDb.loadByIds(type, ids, function(results) {
-          cb(null, results);
-        });
+        FileDb.loadProgress(type, limit, true, cb);
       },
       function(fullRows, cb) {
         var items;
 
         // This could be null or false, which needs to be passed to the final callback because the difference
         // between false and null/undefined is important to external code.
-        //
         if (!fullRows) {
           cb(null, fullRows);
           return;

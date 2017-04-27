@@ -185,24 +185,6 @@ function loadDirs(classification, onFinish) {
   });
 }
 
-function loadDirsById(ids, onFinish) {
-  var stmt = query.load.dir.full();
-  var idList = ids.map(function(id){ return id.id; }).join(',');
-  var params = {
-    $ids: idList
-  };
-
-  stmt  += ' WHERE Sys_Id_Num IN ($ids)'
-  db.all(stmt, params, function(err, rows) {
-    if (err) {
-      throw new Error("Db.loadDirsById error: " + err);
-    }
-    if (onFinish) {
-      onFinish.call(this, rows);
-    }
-  });
-}
-
 function loadDirContents(dirId, what, classification, callback) {
   switch(what) {
     case 'dir':
@@ -291,34 +273,6 @@ function loadFiles(classification, onFinish) {
       throw new Error("Db.loadFiles error: " + err);
     }
 
-    if (onFinish) {
-      onFinish.call(this, rows);
-    }
-  });
-}
-
-function loadFilesById(ids, onFinish) {
-  var stmt = query.load.file.full();
-  var folderIds = [];
-  var fileNames = [];
-  var params = [];
-  var folderPlaceholders = [];
-  var namePlaceholders = [];
-
-  ids.forEach(function(id){
-    folderIds.push(id.folder);
-    folderPlaceholders.push('?');
-    fileNames.push(id.name);
-    namePlaceholders.push('?');
-  });
-
-  params = folderIds.concat(fileNames);
-
-  stmt  += ' WHERE f.Folder_Id IN (' + folderPlaceholders.join(',') + ') AND f.Name IN (' + namePlaceholders.join(',') + ')';
-  db.all(stmt, params, function(err, rows) {
-    if (err) {
-      throw new Error("Db.loadDirsById error: " + err);
-    }
     if (onFinish) {
       onFinish.call(this, rows);
     }
@@ -676,23 +630,26 @@ FilesDb.store = function(type, classification, itemInfo, doneCallback) {
  *  One of either 'file' or 'dir'.
  * @param limit
  *  An optional numeral that indicates how many rows to grab.  Specify as a false value to get everything.
+ * @param fullJoins
+ *  If true, loadProgress will return complete file or dir entities instead of just progress values.
  * @param callback
  *  Results can be an array of rows, or it can be a boolean.  False signifies that there aren't any progress rows
  *  to speak of, that we're totally fresh.
  */
-FilesDb.loadProgress = function(type, limit, callback) {
+FilesDb.loadProgress = function(type, limit, fullJoins, callback) {
   var sql;
   var countQuery;
   var where = '';
   var limit = limit ? ' LIMIT ' + limit : '';
+
   switch(type) {
     case 'file':
-      sql = query.load.file.progress();
+      sql = fullJoins === true ? query.load.file.full() : query.load.file.progress();
       countQuery = query.count.file.progress();
       where = ' WHERE Done = 0';
       break;
     case 'dir':
-      sql = query.load.dir.progress();
+      sql = fullJoins === true ? query.load.dir.full() : query.load.dir.progress();
       countQuery = query.count.dir.progress();
       where = ' WHERE Done = 0';
       break;
@@ -753,34 +710,6 @@ FilesDb.loadFilesWithRemoteIds = function(callback) {
       callback.call(this, rows);
     }
   });
-};
-
-
-FilesDb.loadByIds = function(type, ids, callback) {
-  if (!Array.isArray(ids)) {
-    callback(new Error("loadByIds():: Ids array required"));
-    return;
-  }
-
-  if (ids.length <= 0) {
-    callback(null, []);
-    return;
-  }
-
-  switch(type) {
-    case 'dir':
-      loadDirsById(ids, callback);
-      break;
-    case 'file':
-      loadFilesById(ids, callback);
-      break;
-    case 'var':
-      loadVars(callback);
-      console.warn("Individual var loading by ID not supported yet.");
-      break;
-    default:
-      throw Error("FilesDb.store::: Invalid type.");
-  }
 };
 
 FilesDb.loadAll = function(type, classification, callback) {

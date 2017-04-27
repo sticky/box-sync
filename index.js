@@ -403,7 +403,7 @@ function uploadNextDirOnBox(callback) {
       // Fake the root directory as a starting point.
       dirs = [new StickyDirInfo({inode: 'noparent', parent: 'noparent'})];
     }
-    if (!dirs) {
+    if (!dirs || dirs.length <= 0) {
       callback();
       return;
     }
