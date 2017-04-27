@@ -186,7 +186,7 @@ Query.count.dir = {
 
 Query.count.file = {
   progress: function() {
-    return 'SELECT COUNT (*) FROM ' + TABLE_FILE_PROGRESS;
+    return 'SELECT COUNT(*) FROM ' + TABLE_FILE_PROGRESS;
   }
 };
 
