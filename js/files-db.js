@@ -7,6 +7,10 @@ var query = require('./query-builder');
 // run.  Plus, we don't have table creation queries.
 var db = new sqlite3.Database(__dirname + '/../files-db.sqlite', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE);
 
+//db.on('trace', function(sql) {
+//  console.log("QUERY", sql);
+//});
+
 var stmtDir;
 var stmtFile;
 var queue = async.queue(storeWorker, 100); // This might need to be fiddled with.
@@ -299,14 +303,22 @@ function loadFiles(classification, onFinish) {
 
 function loadFilesById(ids, onFinish) {
   var stmt = query.load.file.full();
-  var folderIds = ids.map(function(id){ return id.folder; }).join(',');
-  var fileNames = ids.map(function(id){ return id.name; }).join(',');
-  var params = {
-    $fids: folderIds,
-    $nids: fileNames
-  };
+  var folderIds = [];
+  var fileNames = [];
+  var params = [];
+  var folderPlaceholders = [];
+  var namePlaceholders = [];
 
-  stmt  += ' WHERE f.Folder_Id IN ($fids) AND f.Name IN ($nids)';
+  ids.forEach(function(id){
+    folderIds.push(id.folder);
+    folderPlaceholders.push('?');
+    fileNames.push(id.name);
+    namePlaceholders.push('?');
+  });
+
+  params = folderIds.concat(fileNames);
+
+  stmt  += ' WHERE f.Folder_Id IN (' + folderPlaceholders.join(',') + ') AND f.Name IN (' + namePlaceholders.join(',') + ')';
   db.all(stmt, params, function(err, rows) {
     if (err) {
       throw new Error("Db.loadDirsById error: " + err);
