@@ -715,6 +715,38 @@ FilesDb.loadFilesWithRemoteIds = function(callback) {
   });
 };
 
+FilesDb.loadItemsInPath = function(type, pathString, callback) {
+  var stmt;
+  var likePath = pathString + '%';
+  var params = {};
+  switch(type) {
+    case 'dir':
+      stmt = Query.load.dir.full();
+
+      break;
+    case 'file':
+      stmt = Query.load.file.full();
+      break;
+    default:
+      return callback(new Error("loadItemsInPath error: Unrecognized type (" + type + ")"));
+  }
+
+  params = {
+    $pathString: likePath
+  };
+  stmt += ' WHERE Full_Path LIKE ($pathString)';
+
+  db.all(stmt, params, function(err, rows) {
+    if (err) {
+      throw new Error("Db.loadItemsInPath error: " + err);
+    }
+
+    if (callback) {
+      callback(err, rows);
+    }
+  });
+};
+
 FilesDb.loadAll = function(type, classification, callback) {
   switch(type) {
     case 'file':

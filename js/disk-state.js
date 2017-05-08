@@ -315,6 +315,25 @@ function getRealObjectsFromDbRows(type, rows) {
   return objects;
 }
 
+
+DiskState.prototype.getUnfinishedInvalidDirs = function(completeCallback) {
+  FileDb.loadAll('dir', FileDb.CLASS.INVALID, function(rows) {
+    var dirs = [];
+    if (!rows) {
+      completeCallback(null);
+      return;
+    }
+
+    rows.forEach(function(row) {
+      var file = dbRowToDir(row);
+      if (!row.Done) {
+        dirs.push(file);
+      }
+    });
+    completeCallback(null, dirs);
+  });
+};
+
 DiskState.prototype.getUnfinishedInvalidFiles = function(completeCallback) {
   FileDb.loadAll('file', FileDb.CLASS.INVALID, function(rows) {
     var files = [];
@@ -442,6 +461,23 @@ DiskState.prototype.getFilesInDir = function(dir, callback) {
       files.push(dbRowToFile(row));
     });
     callback(files);
+  });
+};
+
+DiskState.prototype.getItemsWithinPath = function(path, callback) {
+  async.series([
+    function(cb) {
+      FileDb.loadItemsInPath('dir', path, cb);
+    },
+    function(cb) {
+      FileDb.loadItemsInPath('file', path, cb);
+    }
+  ], function(err, results) {
+    var items = {
+      dirs: results[0],
+      files: results[1]
+    };
+    callback(err, items);
   });
 };
 

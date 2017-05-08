@@ -70,6 +70,28 @@ module.exports = {
       callback(err, null);
     })
   },
+  /* Create a new File or Directory object from an existing one, but clean out any values that probably shouldn't be dupe'd. */
+  createNewItemFrom: function(originalItem) {
+    var newItem = originalItem.duplicate();
+    newItem.issues = [];
+    newItem.remoteId = null;
+    // These timestamps (in current behavior) aren't set until an upload is attempted.
+    newItem.created = null;
+    newItem.updated = null;
+
+    return newItem;
+  },
+  itemHasIssues: function(itemObj, callback) {
+    if (itemObj.issues.length >= 1) { return true;}
+
+    for (var i = 0; i < itemObj.issues.length; i++) {
+      if (itemObj.issues[i] && itemObj.issues[i] != 0) {
+        return true;
+      }
+    }
+
+    return false;
+  },
   /* Box only supports file names of 255 characters or less. Names that will not be supported are those that
     contain non-printable ascii, / or \, names with leading or trailing spaces, and the special
     names “.” and “..”
