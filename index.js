@@ -190,7 +190,7 @@ callbacks.onCategorizeComplete = function(callback) {
 }
 
 // The attempt to make a folder has finished.
-callbacks.onFolderComplete = function(dir, error, response, completeCallback) {
+callbacks.onBoxFolderMade = function(dir, error, response, completeCallback) {
   if (response) {
     dir.remoteId = response.id;
   }
@@ -983,9 +983,12 @@ function putFoldersOnBox(dirs, doneCallback) {
       if (dir.issues.length !== 0) {
         throw new Error("BAD DIR, SHOULD NOT BE TRYING TO SYNC: " + dir.localId);
       }
-      uploader.makeDir(dir, callbacks.onFolderComplete, callback);
+      uploader.makeDir(dir, callbacks.onBoxFolderMade, callback);
     })
-  }, function() {
+  }, function(err) {
+    if (err) {
+      throw err;
+    }
     doneCallback();
   });
 }
@@ -1007,7 +1010,7 @@ function putFilesOnBox(files, doneCallback) {
         file.created = fsStat.ctime;
         file.hash = hash;
 
-        if (file.issues.length !== 0) {
+        if (file.issues.length !== 0 && program.shouldCorrectInvalids) {
           NameFixer.fixAndMarkForUpload('file', file, callback);
           return;
         }
