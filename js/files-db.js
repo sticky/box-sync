@@ -1,7 +1,10 @@
 'use strict';
 var sqlite3 = require('sqlite3'); //.verbose();
 var async = require('async');
-var query = require('./query-builder');
+
+// Capitalizing Query here because it's very easy to, when writing a SQL query, to use a local 'query' variable which
+// just overwrote the global builder object.
+var Query = require('./query-builder');
 
 // Making sure that this database is hidden off wherever this script is, and not popping up wherever we randomly
 // run.  Plus, we don't have table creation queries.
@@ -51,12 +54,12 @@ function prepareStatements(callback) {
 }
 
 function finishPreparing(callback) {
-  stmtDir = db.prepare(query.insert.dir.dir(),
+  stmtDir = db.prepare(Query.insert.dir.dir(),
   [], function(err) {
     if (err) {
       throw err;
     }
-    stmtFile = db.prepare(query.insert.file.file(), [], callback);
+    stmtFile = db.prepare(Query.insert.file.file(), [], callback);
   });
 }
 
@@ -75,19 +78,19 @@ function finalizeStatements(callback) {
 
 function truncateEverything(callback) {
   // Order matters!  Foreign key constraints.
-  var tables = query.tables.all();
+  var tables = Query.tables.all();
   truncateTables(tables, callback);
 }
 
 function truncateProgress(callback) {
   // Order matters!  Foreign key constraints in play.
-  var tables = query.tables.progress();
+  var tables = Query.tables.progress();
   truncateTables(tables, callback);
 }
 
 function truncateErrors(callback) {
   // Order matters!  Foreign key constraints in play.
-  var tables = query.tables.errors();
+  var tables = Query.tables.errors();
   truncateTables(tables, callback);
 }
 
@@ -170,7 +173,7 @@ function storeFile(localFolderId, fullPath, name, remoteId, createdStr, updatedS
 }
 
 function loadDirs(classification, onFinish) {
-  var stmt = query.load.dir.full();
+  var stmt = Query.load.dir.full();
 
   if (classification) {
     stmt += ' WHERE dc.Class = ' + CLASS_ENUM[classification];
@@ -205,7 +208,7 @@ function loadFromParent(type, parentId, classification, callback) {
 
   switch(type) {
     case 'dir':
-      stmt = query.load.dir.dir();
+      stmt = Query.load.dir.dir();
       stmt += ' WHERE d.Parent_Id = $dirId';
       params = {$dirId:parentId };
       if (classification) {
@@ -214,7 +217,7 @@ function loadFromParent(type, parentId, classification, callback) {
       }
       break;
     case 'file':
-      stmt = query.load.file.file();
+      stmt = Query.load.file.file();
       stmt += 'WHERE f.Folder_Id = $dirId';
       params = {$dirId:parentId};
       if (classification) {
@@ -235,7 +238,7 @@ function loadFromParent(type, parentId, classification, callback) {
 }
 
 function loadSingleDir(dirId, onFinish) {
-  var stmt = query.load.dir.dir();
+  var stmt = Query.load.dir.dir();
   stmt += ' WHERE d.Sys_Id_Num = $dirId';
 
   db.get(stmt, {$dirId: dirId}, function(err, row) {
@@ -249,7 +252,7 @@ function loadSingleDir(dirId, onFinish) {
 }
 
 function loadSingleFile(dirId, name, onFinish) {
-  var stmt = query.load.file.file();
+  var stmt = Query.load.file.file();
   stmt += ' WHERE f.Folder_Id = $dirId AND f.Name = $name';
 
   db.get(stmt, {$dirId: dirId, $name: name}, function(err, row) {
@@ -263,7 +266,7 @@ function loadSingleFile(dirId, name, onFinish) {
 }
 
 function loadFiles(classification, onFinish) {
-  var stmt = query.load.file.full();
+  var stmt = Query.load.file.full();
 
   if (classification) {
     stmt += ' WHERE fc.Class = ' + CLASS_ENUM[classification];
@@ -286,7 +289,7 @@ function storeDirIssues(idNum, issueArr, onDoneCallback) {
   setIssueParams(updateParams, issueArr);
   setForeignKeysPragma();
 
-  db.run(query.insert.dir.issue(), updateParams, function(err) {
+  db.run(Query.insert.dir.issue(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store issues error: " + err);
     }
@@ -304,7 +307,7 @@ function storeFileIssues(folderId, name, issuesArray, onDoneCallback) {
   setIssueParams(updateParams, issuesArray);
   setForeignKeysPragma();
 
-  db.run(query.insert.file.issue(), updateParams, function(err) {
+  db.run(Query.insert.file.issue(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store issues error: " + err);
     }
@@ -335,7 +338,7 @@ function storeDirClass(classification, dirId, onDoneCallback) {
   };
   setForeignKeysPragma();
 
-  db.run(query.insert.dir.class(), updateParams, function(err) {
+  db.run(Query.insert.dir.class(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store class error: " + err);
     }
@@ -353,7 +356,7 @@ function storeFileClass(classification, folderId, name, onDoneCallback) {
   };
   setForeignKeysPragma();
 
-  db.run(query.insert.file.class(), updateParams, function(err) {
+  db.run(Query.insert.file.class(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store class error: " + err);
     }
@@ -370,7 +373,7 @@ function storeDirectoryProgress(dirId, done, onFinish) {
   };
   setForeignKeysPragma();
 
-  db.run(query.insert.dir.progress(), updateParams, function(err) {
+  db.run(Query.insert.dir.progress(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store progress error: " + err);
     }
@@ -388,7 +391,7 @@ function storeFileProgress(dirId, fileName, done, onFinish) {
   };
   setForeignKeysPragma();
 
-  db.run(query.insert.file.progress(), updateParams, function(err) {
+  db.run(Query.insert.file.progress(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store progress error: " + err);
     }
@@ -406,7 +409,7 @@ function storeDirectoryFailure(dirId, errNum, errTxt, onFinish) {
   };
   setForeignKeysPragma();
 
-  db.run(query.insert.dir.error(), updateParams, function(err) {
+  db.run(Query.insert.dir.error(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store failure error: " + err);
     }
@@ -424,7 +427,7 @@ function removeDirectoryFailure(dirNum, onFinish) {
 
   setForeignKeysPragma();
 
-  db.run(query.delete.dir.error(), params, function(err) {
+  db.run(Query.delete.dir.error(), params, function(err) {
     if (err) {
       throw new Error("Db.delete dir failure error: " + err);
     }
@@ -443,7 +446,7 @@ function removeFileFailure(folderId, filename, onFinish) {
 
   setForeignKeysPragma();
 
-  db.run(query.delete.file.error(), params, function(err) {
+  db.run(Query.delete.file.error(), params, function(err) {
     if (err) {
       throw new Error("Db.delete file failure error: " + err);
     }
@@ -462,7 +465,7 @@ function storeFileFailure(dirId, fileName, errNum, errTxt, onFinish) {
   };
   setForeignKeysPragma();
 
-  db.run(query.insert.file.error(), updateParams, function(err) {
+  db.run(Query.insert.file.error(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store failure error: " + err);
     }
@@ -473,7 +476,7 @@ function storeFileFailure(dirId, fileName, errNum, errTxt, onFinish) {
 }
 
 function loadDirFailures(onFinish) {
-  var sql = query.load.dir.dir();
+  var sql = Query.load.dir.dir();
   sql += ' JOIN Directory_Failures df ON d.Sys_Id_Num = df.Dir_Id_Num';
   db.all(sql, [], function(err, rows) {
     if (err) {
@@ -486,7 +489,7 @@ function loadDirFailures(onFinish) {
 }
 
 function loadFileFailures(onFinish) {
-  var sql = query.load.file.file();
+  var sql = Query.load.file.file();
   sql += ' JOIN File_Failures ff ON f.Folder_Id = ff.Folder_Id AND f.Name = ff.Name';
   db.all(sql, [], function(err, rows) {
     if (err) {
@@ -499,7 +502,7 @@ function loadFileFailures(onFinish) {
 }
 
 function loadDirsMissingRemoteIds(onFinish) {
-  var sql = query.load.dir.dir();
+  var sql = Query.load.dir.dir();
   sql += ' LEFT JOIN Directory_Failures df ON d.Sys_Id_Num = df.Dir_Id_Num';
   sql += ' LEFT JOIN Directory_Progress dp ON d.Sys_Id_Num = dp.Dir_Id';
   sql += " WHERE df.Error_Code IS NULL AND d.Remote_ID IS  'unknown' AND (di.Long IS 0 AND di.Chars IS 0 AND di.Spaces IS 0) AND Done IS NOT NULL";
@@ -520,7 +523,7 @@ function storeVar(name, value, onFinish) {
   };
   setForeignKeysPragma();
 
-  db.run(query.insert.var.var(), updateParams, function(err) {
+  db.run(Query.insert.var.var(), updateParams, function(err) {
     if (err) {
       throw new Error("Db.store vars error: " + err);
     }
@@ -531,7 +534,7 @@ function storeVar(name, value, onFinish) {
 }
 
 function loadVars(onFinish) {
-  var stmt = query.load.var.var();
+  var stmt = Query.load.var.var();
 
   db.all(stmt, [], function(err, rows) {
     if (err) {
@@ -644,13 +647,13 @@ FilesDb.loadProgress = function(type, limit, fullJoins, callback) {
 
   switch(type) {
     case 'file':
-      sql = fullJoins === true ? query.load.file.full() : query.load.file.progress();
-      countQuery = query.count.file.progress();
+      sql = fullJoins === true ? Query.load.file.full() : Query.load.file.progress();
+      countQuery = Query.count.file.progress();
       where = ' WHERE Done = 0';
       break;
     case 'dir':
-      sql = fullJoins === true ? query.load.dir.full() : query.load.dir.progress();
-      countQuery = query.count.dir.progress();
+      sql = fullJoins === true ? Query.load.dir.full() : Query.load.dir.progress();
+      countQuery = Query.count.dir.progress();
       where = ' WHERE Done = 0';
       break;
     default:
@@ -697,7 +700,7 @@ FilesDb.loadProgress = function(type, limit, fullJoins, callback) {
 };
 
 FilesDb.loadFilesWithRemoteIds = function(callback) {
-  var stmt = query.load.file.file();
+  var stmt = Query.load.file.file();
 
   stmt += ' WHERE fc.Class = ' + CLASS_ENUM['valid'] + ' AND f.Remote_Id IS NOT "unknown"';
 
