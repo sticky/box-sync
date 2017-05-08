@@ -627,6 +627,11 @@ function retryErroredFiles(callback) {
         retryFiles(failureGroups['SYS'], cb);
       });
     }
+    if (failureGroups['408']) {
+      tasks.push(function(cb) {
+        retryFiles(failureGroups['408'], cb);
+      });
+    }
 
     // We were just going a little too fast...
     if (failureGroups['429']) {
