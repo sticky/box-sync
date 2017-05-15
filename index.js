@@ -615,6 +615,7 @@ function retryErroredFiles(callback) {
         retryFiles(failureGroups['500'], cb);
       });
     }
+
     if (failureGroups['500']) {
       tasks.push(function(cb) {
         retryFiles(failureGroups['500'], cb);

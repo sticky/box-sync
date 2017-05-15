@@ -289,7 +289,6 @@ function fixDirError(info, errorNum, callback) {
       }
     });
   } else if (errorNum == 503) {
-    console.log("Retying");
     retryBadUpload(info, callback);
   } else if (errorNum == 404 || errorNum == 'pre-404') {
     console.log("fixing FILE error 404: " + info.dir.path + '/' + info.dir.name);
