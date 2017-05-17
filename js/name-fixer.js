@@ -31,7 +31,6 @@ FileFixer.fixAndMarkForUpload = function(type, item, callback) {
     length: false
   };
 
-
   newName = item.name;
   if (item.issues.includes("spaces")) {
     newName = newName.trim();

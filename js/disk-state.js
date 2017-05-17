@@ -36,7 +36,8 @@ function dbRowToFile(row, shouldCache) {
     updated: row.Updated,
     created: row.Created,
     remote: row.Remote_Id,
-    problems: getRowIssues(row)
+    problems: getRowIssues(row),
+    hash: row.Hash
   };
 
   var newFile = new StickyFile(fileOpts);

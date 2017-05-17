@@ -349,42 +349,6 @@ function finishUploading(callback) {
   console.log("Totally done with creating box content!");
 }
 
-
-// An earlier version didn't store hashes to the DB.
-function collectAndStoreFileHashes(callback) {
-  diskState.getUploadedFiles(function(files) {
-    async.eachLimit(files, 1, function(file, cb) {
-      utils.makeFileHash(file, function(err, hash) {
-        if (err) {
-          throw err;
-        }
-        repairAndConfirmStoredHash(file, hash, cb);
-      });
-    }, function() {
-      callback();
-    });
-  });
-};
-
-function repairAndConfirmStoredHash(file, hash, callback) {
-  getBoxFileInfo(file, {fields: 'sha1'}, function(err, response) {
-    var error;
-    if (err) {
-      throw new Error("Unexpected CompareHash error for file :" + file.pathStr + '/' + file.name + "; error was: " + err);
-    }
-    if (hash !== response.sha1) {
-      error = new Error("File Hash and Remote Hash did not match.");
-      error.statusCode = 'CUST';
-      diskState.storeFileError(file, error, response, callback);
-      console.log("storing error", file.name);
-    } else {
-      file.hash = hash;
-      diskState.storeFile(diskState.CLASS.VALID, file, callback);
-    }
-  });
-};
-
-
 callbacks.onFileData = function(chunk) {
   uploadCounts.bytes += chunk.length;
   UI.updateUploading({bytes: uploadCounts.bytes});
@@ -703,14 +667,8 @@ function determineProgramBehaviors(source, freshStart) {
   } else if (!program.onlyValidate) {
     tasks.push(loadPreviousState);
 
-    if (program.development) {
-      console.log("focusing on dev feature.");
-      tasks.push(function(cb) {
-        collectAndStoreFileHashes(cb);
-      });
-    }
 
-    // A switch to parallel behavior could make the DB class explode because its statement preparation
+    // BUG: A switch to parallel behavior could make the DB class explode because its statement preparation
     // is not parallel safe.
     // Do one non-parallel call to storage to get those statements prepared.
     tasks.push(function(cb) {
