@@ -65,7 +65,7 @@ program
   .arguments('<local-dir> <box-folder>')
   .option('-v, --only-validate', 'Only do the initial validation and categorization of the files.')
   .option('-n, --assume-new', 'Completely ignore results from previous runs.')
-  .option('-r, --redo', 'Try to upload all files, ignoring previous upload attempts.')
+  .option('--redo', 'Try to upload all files, ignoring previous upload attempts.')
   .option('-f, --fix-errors', 'Try to fix errors encountered on a previous upload attempt.')
   .option('-c, --should-correct-invalids', 'Try to fix filenames that have been determined to be invalid and upload them.')
   .option('-d, --development', 'Focus on what is being developed (do not use unless you know what you are doing.')
