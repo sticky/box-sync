@@ -82,6 +82,21 @@ function putFileOnBox(file, streamHandlers, itemComplete, doneCallback) {
   });
 }
 
+function getDirInfo(dir, query, doneCallback) {
+  var self = this;
+  var info;
+  async.series([
+    function(cb) {
+      self.client.folders.get(dir.remoteId, query, function(err, response) {
+        info = response;
+        cb(err);
+      });
+    },
+  ], function(err) {
+    doneCallback(err, info);
+  });
+}
+
 function getFileInfo(file, query, doneCallback) {
   var self = this;
   var info;
@@ -149,6 +164,9 @@ BoxUploader.prototype.makeFile = function(file, streamHandlers, onFileComplete, 
 };
 BoxUploader.prototype.getDirContents = function(boxId, offset, callback) {
   getBoxFolderContents.call(this, boxId, offset, callback);
+};
+BoxUploader.prototype.getDirInfo = function(dir, query, callback) {
+  getDirInfo.call(this, dir, query, callback);
 };
 BoxUploader.prototype.getFileInfo = function(file, query, callback) {
   getFileInfo.call(this, file, query, callback);

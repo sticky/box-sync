@@ -351,6 +351,21 @@ DiskState.prototype.getRemotelessDirs = function(completeCallback) {
   });
 };
 
+DiskState.prototype.getUploadedDirs = function(completeCallback) {
+  FileDb.loadDirsWithRemoteIds(function(rows) {
+    var dirs = [];
+    if (!rows) {
+      completeCallback(null);
+      return;
+    }
+
+    rows.forEach(function(row) {
+      dirs.push(dbRowToDir(row));
+    });
+    completeCallback(dirs);
+  });
+};
+
 DiskState.prototype.getUploadedFiles = function(completeCallback) {
   FileDb.loadFilesWithRemoteIds(function(rows) {
     var files = [];

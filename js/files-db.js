@@ -761,6 +761,21 @@ FilesDb.loadDirsWithoutRemoteIds = function(callback) {
   loadDirsMissingRemoteIds(callback);
 };
 
+FilesDb.loadDirsWithRemoteIds = function(callback) {
+  var sql = Query.load.dir.dir();
+  sql += ' LEFT JOIN Directory_Failures df ON d.Sys_Id_Num = df.Dir_Id_Num';
+  sql += ' LEFT JOIN Directory_Progress dp ON d.Sys_Id_Num = dp.Dir_Id';
+  sql += " WHERE d.Remote_ID IS NOT 'unknown'";
+  db.all(sql, [], function(err, rows) {
+    if (err) {
+      throw new Error("Db.loadDirsWithRemoteIds failure error: [" + sql + "]; " + err);
+    }
+    if (callback) {
+      callback(rows);
+    }
+  });
+};
+
 FilesDb.storeDirProgress = function(dir, value, callback) {
   storeDirectoryProgress(dir, value, callback);
 };

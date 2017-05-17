@@ -68,7 +68,7 @@ program
   .option('--redo', 'Try to upload all files, ignoring previous upload attempts.')
   .option('-f, --fix-errors', 'Try to fix errors encountered on a previous upload attempt.')
   .option('-c, --should-correct-invalids', 'Try to fix filenames that have been determined to be invalid and upload them.')
-  .option('-d, --development', 'Focus on what is being developed (do not use unless you know what you are doing.')
+  .option('--verify-uploads', 'Verify that the uploaded dirs and files still exist and seem correct.')
   .action(function(source, dest) {
     console.log("SOURCE", source);
     var freshStart = program.assumeNew ? true : false;
@@ -661,12 +661,15 @@ function determineProgramBehaviors(source, freshStart) {
   }
 
   if (program.onlyValidate || freshStart) {
-    tasks.push(function(cb) {
+    tasks.push(function (cb) {
       runValidation(source, cb);
     });
-  } else if (!program.onlyValidate) {
+  } else if (program.verifyUploads) {
     tasks.push(loadPreviousState);
 
+    tasks.push(verifyUploads);
+  } else if (!program.onlyValidate) {
+    tasks.push(loadPreviousState);
 
     // BUG: A switch to parallel behavior could make the DB class explode because its statement preparation
     // is not parallel safe.
@@ -980,4 +983,10 @@ function putFilesOnBox(files, doneCallback) {
   }, function() {
     doneCallback();
   });
+}
+
+function verifyUploads(callback) {
+  var VerifyUploads = require('./js/verify-uploads');
+  VerifyUploads.init(diskState, uploader);
+  VerifyUploads.verifyAll(callback);
 }
