@@ -1,5 +1,3 @@
-var ProgressBar = require('progress');
-
 var RENDER_INTERVAL_MS = 1000;
 
 var ConsoleOutput = module.exports;
@@ -10,6 +8,8 @@ var dirty = true;
 var active = false;
 var renderTimer;
 var displayTime = 0;
+var currentRenderCallback;
+var customRenderCallback;
 
 var validStats = {
   time: 0,
@@ -42,29 +42,20 @@ var uploadStats = {
   totalUploads: ''
 };
 
-var lastStrRendered = '';
-
-var IDX_DIR = 0;
-
-var fileBar = new ProgressBar('  uploading [:name] [:bar] :rate/bps :percent :etas', {
-  width: 10,
-  clear: true,
-  total: 0
-});
-var overallBar = new ProgressBar('  progress [:bar] :rate/bps :percent :etas', {
-  width: 10,
-  clear: true,
-  total: 0
-});
-
 function setupRenderInterval(type) {
 
   switch(type) {
     case 'validate':
-      renderTimer = setInterval(renderValidation, 1000);
+      clearInterval(renderTimer);
+      renderTimer = setInterval(doRender, 1000);
       break;
     case 'upload':
-      renderTimer = setInterval(renderUploading, 1000);
+      clearInterval(renderTimer);
+      renderTimer = setInterval(doRender, 1000);
+      break;
+    case 'custom':
+      clearInterval(renderTimer);
+      renderTimer = setInterval(doRender, 1000);
       break;
   }
 }
@@ -78,13 +69,21 @@ function getEta() {
   return (percent == 100) ? 0 : elapsed * (uploadStats.totalBytes / uploadStats.bytes - 1);
 }
 
-function renderValidation() {
+function doRender(forceRender) {
   if (!dirty || !active) {
     return;
   }
-  if (Date.now() - displayTime < RENDER_INTERVAL_MS) {
+  if (!forceRender && Date.now() - displayTime < RENDER_INTERVAL_MS) {
     return;
   }
+
+  currentRenderCallback(outputStream);
+
+  dirty = false;
+  displayTime = Date.now();
+}
+
+function renderValidation() {
   outputStream.write('\x1Bc');
 
   outputStream.write('Valid Files: ' + validStats.vFiles + '\n');
@@ -105,13 +104,6 @@ function renderValidation() {
 }
 
 function renderUploading() {
-  if (!dirty || !active) {
-    return;
-  }
-  if (Date.now() - displayTime < RENDER_INTERVAL_MS) {
-    return;
-  }
-
   var eta = getEta();
 
   outputStream.write('\x1Bc');
@@ -131,26 +123,39 @@ function renderUploading() {
   displayTime = Date.now();
 }
 
+ConsoleOutput.setRenderer = function(renderFunc) {
+  customRenderCallback = renderFunc;
+};
+
 ConsoleOutput.startDisplay = function(displayName) {
   switch(displayName) {
     case 'validate':
       active = true;
-      renderValidation();
+      currentRenderCallback = renderValidation;
       displayTime = Date.now();
-      setupRenderInterval();
+      setupRenderInterval('validate');
       break;
     case 'upload':
       active = true;
-      renderUploading();
+      currentRenderCallback = renderUploading;
       displayTime = Date.now();
-      setupRenderInterval();
+      setupRenderInterval('upload');
+      break;
+    case 'custom':
+      active = true;
+      currentRenderCallback = customRenderCallback;
+      displayTime = Date.now();
+      setupRenderInterval('custom');
       break;
     default:
       throw new Error("Unrecognized display request.");
   }
+  currentRenderCallback(outputStream);
 };
 
 ConsoleOutput.stopDisplay = function() {
+  // Force one last render.
+  doRender(true);
   clearInterval(renderTimer);
   active = false;
 };
@@ -161,7 +166,7 @@ ConsoleOutput.setReading = function (str) {
   }
   validStats.readingStr = str;
   dirty = true;
-  renderValidation();
+  doRender();
 };
 
 ConsoleOutput.setStoring = function (str) {
@@ -170,7 +175,7 @@ ConsoleOutput.setStoring = function (str) {
   }
   validStats.storingStr = str;
   dirty = true;
-  renderValidation();
+  doRender();
 };
 
 ConsoleOutput.setStats = function (stats) {
@@ -183,7 +188,7 @@ ConsoleOutput.setStats = function (stats) {
   }
   if (needsRender) {
     dirty = true;
-    renderValidation();
+    doRender();
   }
 };
 
@@ -197,8 +202,13 @@ ConsoleOutput.updateUploading = function(stats) {
   }
   if (needsRender) {
     dirty = true;
-    renderUploading();
+    doRender();
   }
+}
+
+ConsoleOutput.wasUpdated = function() {
+  dirty = true;
+  doRender();
 }
 
 
