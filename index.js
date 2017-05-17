@@ -63,7 +63,7 @@ var fds = {ignoredFiles: null};
 program
   .version('0.0.1')
   .arguments('<local-dir> <box-folder>')
-  .option('-v, --only-validate', 'Only do the initial validation and categorization of the files.')
+  .option('--only-validate', 'Only do the initial validation and categorization of the files.')
   .option('-n, --assume-new', 'Completely ignore results from previous runs.')
   .option('--redo', 'Try to upload all files, ignoring previous upload attempts.')
   .option('-f, --fix-errors', 'Try to fix errors encountered on a previous upload attempt.')
