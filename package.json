@@ -23,7 +23,6 @@
     "crypto": "0.0.3",
     "fs": "0.0.1-security",
     "inquirer": "^3.0.6",
-    "progress": "^1.1.8",
     "simple-oauth2": "^1.1.0",
     "sqlite3": "^3.1.8"
   },
