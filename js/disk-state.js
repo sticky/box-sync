@@ -351,8 +351,8 @@ DiskState.prototype.getRemotelessDirs = function(completeCallback) {
   });
 };
 
-DiskState.prototype.getUploadedDirs = function(completeCallback) {
-  FileDb.loadDirsWithRemoteIds(function(rows) {
+DiskState.prototype.getUnverifiedDirs = function(completeCallback) {
+  FileDb.loadUnverifiedDirsWithRemoteIds(function(rows) {
     var dirs = [];
     if (!rows) {
       completeCallback(null);
@@ -366,8 +366,8 @@ DiskState.prototype.getUploadedDirs = function(completeCallback) {
   });
 };
 
-DiskState.prototype.getUploadedFiles = function(completeCallback) {
-  FileDb.loadFilesWithRemoteIds(function(rows) {
+DiskState.prototype.getUnverifiedFiles = function(completeCallback) {
+  FileDb.loadUnverifiedFilesWithRemoteIds(function(rows) {
     var files = [];
     if (!rows) {
       completeCallback(null);
@@ -493,6 +493,32 @@ DiskState.prototype.recordVar = function(name, value, callback) {
 };
 DiskState.prototype.getVars = function(callback) {
   FileDb.loadAll('var', '', callback);
+};
+
+DiskState.prototype.recordVerifyComplete = function(type, item, callback) {
+  switch(type) {
+    case 'dir':
+      FileDb.storeDirVerify(item.localId, 1, callback);
+      break;
+    case 'file':
+      FileDb.storeFileVerify(item.localFolderId, item.name, 1, callback);
+      break;
+    default:
+      throw new Error('DiskState.recordVerifyComplete::: Unrecognized type (' + type + ')');
+  }
+};
+
+DiskState.prototype.recordVerifyInComplete = function(type, item, callback) {
+  switch(type) {
+    case 'dir':
+      FileDb.storeDirVerify(item.localId, 0, callback);
+      break;
+    case 'file':
+      FileDb.storeFileVerify(item.localFolderId, item.name, 0, callback);
+      break;
+    default:
+      throw new Error('DiskState.recordVerifyInComplete::: Unrecognized type (' + type + ')');
+  }
 };
 
 module.exports = DiskState;

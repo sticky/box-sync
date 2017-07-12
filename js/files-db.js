@@ -420,7 +420,6 @@ function storeDirectoryFailure(dirId, errNum, errTxt, onFinish) {
 }
 
 function removeDirectoryFailure(dirNum, onFinish) {
-  console.log("removing dir error");
   var params = {
     $dirNum: dirNum
   };
@@ -438,7 +437,6 @@ function removeDirectoryFailure(dirNum, onFinish) {
 }
 
 function removeFileFailure(folderId, filename, onFinish) {
-  console.log("removing file error");
   var params = {
     $folderId: folderId,
     $name: filename
@@ -715,6 +713,22 @@ FilesDb.loadFilesWithRemoteIds = function(callback) {
   });
 };
 
+FilesDb.loadUnverifiedFilesWithRemoteIds = function(callback) {
+  var stmt = Query.load.file.file('f.Folder_Id, f.Name, f.Full_Path, f.Hash, f.Remote_Id, f.Created, f.Updated, fc.Class, fi.Chars, fi.Long, fi.Spaces, fp.Done, ff.Error_Code, ff.Error_Blob, fv.VerifyDone');
+  stmt += ' LEFT JOIN File_Failures ff ON f.Folder_Id = ff.Folder_Id AND f.Name = ff.Name';
+  stmt += ' LEFT JOIN Files_Progress fp ON f.Folder_Id = fp.Folder_Id AND f.Name = fp.Name';
+  stmt += ' LEFT JOIN Files_Verify fv ON f.Folder_Id = fv.Folder_Id AND f.Name = fv.Name';
+  stmt += " WHERE f.Remote_Id IS NOT 'unknown' AND fv.VerifyDone IS NOT 1";
+  db.all(stmt, [], function(err, rows) {
+    if (err) {
+      throw new Error("Db.loadUnverifiedFilesWithRemoteIds failure error: [" + stmt + "]; " + err);
+    }
+    if (callback) {
+      callback(rows);
+    }
+  });
+};
+
 FilesDb.loadAll = function(type, classification, callback) {
   switch(type) {
     case 'file':
@@ -765,10 +779,26 @@ FilesDb.loadDirsWithRemoteIds = function(callback) {
   var sql = Query.load.dir.dir();
   sql += ' LEFT JOIN Directory_Failures df ON d.Sys_Id_Num = df.Dir_Id_Num';
   sql += ' LEFT JOIN Directory_Progress dp ON d.Sys_Id_Num = dp.Dir_Id';
-  sql += " WHERE d.Remote_ID IS NOT 'unknown'";
+  sql += " WHERE d.Remote_Id IS NOT 'unknown'";
   db.all(sql, [], function(err, rows) {
     if (err) {
       throw new Error("Db.loadDirsWithRemoteIds failure error: [" + sql + "]; " + err);
+    }
+    if (callback) {
+      callback(rows);
+    }
+  });
+};
+
+FilesDb.loadUnverifiedDirsWithRemoteIds = function(callback) {
+  var sql = Query.load.dir.dir();
+  sql += ' LEFT JOIN Directory_Failures df ON d.Sys_Id_Num = df.Dir_Id_Num';
+  sql += ' LEFT JOIN Directory_Progress dp ON d.Sys_Id_Num = dp.Dir_Id';
+  sql += ' LEFT JOIN Directory_Verify dv ON d.Sys_Id_Num = dv.Dir_Id';
+  sql += " WHERE d.Remote_ID IS NOT 'unknown' AND dv.VerifyDone IS NOT 1";
+  db.all(sql, [], function(err, rows) {
+    if (err) {
+      throw new Error("Db.loadUnverifiedDirsWithRemoteIds failure error: [" + sql + "]; " + err);
     }
     if (callback) {
       callback(rows);
@@ -797,6 +827,46 @@ FilesDb.removeDirError = function(dirNum, callback) {
 
 FilesDb.removeFileError = function(folderId, filename, callback) {
   removeFileFailure(folderId, filename, callback);
+};
+
+FilesDb.storeDirVerify = function(dirId, value, callback) {
+  var updateParams = {
+    $dir: dirId,
+    $done: value
+  };
+  setForeignKeysPragma();
+
+  db.run(Query.insert.dir.verify(), updateParams, function(err) {
+    if (err) {
+      throw new Error("Db.store verify error: " + err);
+    }
+    if (callback) {
+      callback();
+    }
+  });
+};
+
+FilesDb.storeFileVerify = function(dirId, fileName, value, callback) {
+  var query = Query.insert.file.verify();
+  var updateParams = {
+    $id: dirId,
+    $done: value,
+    $name: fileName
+  };
+  setForeignKeysPragma();
+
+  if (!dirId || !fileName) {
+    throw new Error("Invalud arguments given to storeFileVerify");
+  }
+
+  db.run(query, updateParams, function(err) {
+    if (err) {
+      throw new Error("Db.store verify error: " + err + ' [' + query + ']');
+    }
+    if (callback) {
+      callback();
+    }
+  });
 };
 
 process.on('SIGINT', function() {

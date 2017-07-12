@@ -101,8 +101,6 @@ function correctDirRemoteId(issueInfo, callback) {
       }
 
       if (!newRemoteId) {
-        console.error("Entries checked", entryInfo.entries);
-        console.error("Dir info", dir);
         // This shouldn't be happening... something big went wrong.
         throw new Error("New remote ID not found during attempt to fix.");
       }
@@ -119,7 +117,6 @@ function correctDirRemoteId(issueInfo, callback) {
 }
 
 function createZipofDirAndSaveToStorage(issueInfo, callback) {
-  console.log("Making a zip file");
   var dir = issueInfo.dir;
   var file = new FileInfo({
     localFolderId: dir.parentId,
@@ -131,7 +128,6 @@ function createZipofDirAndSaveToStorage(issueInfo, callback) {
   var archive = archiver('zip');
 
   output.on('close', function() {
-    console.log("zip file completed");
     async.series([
       function(cb) {
         store.storeFile(store.CLASS.VALID, file, cb);
@@ -174,7 +170,6 @@ function dirRetryDone(dir, err, response, callback) {
 
 function retryBadUpload(issueInfo, callback) {
   var dir = issueInfo.dir;
-  console.log("re-uploading:", issueInfo);
   async.series([
     function (cb) {
       store.recordStart('dir', dir, cb);
@@ -186,7 +181,6 @@ function retryBadUpload(issueInfo, callback) {
       store.recordCompletion('dir', dir, cb);
     }
   ], function() {
-    console.log("done retrying upload.");
     callback();
   });
 }
@@ -274,10 +268,8 @@ function isfixableFileError(errorNum, errorText) {
 
 function fixDirError(info, errorNum, callback) {
   if (errorNum == 409 || errorNum == 'pre-409') {
-    console.log("fixing error 409");
     correctDirRemoteId(info, function(err) {
       if (err && err.message === BOX_ITEM_NOT_FOLDER) {
-        console.log("trying to fix folder conflict");
         // This is probably because a mac app bundle has been uploaded through other means.  But maybe not?  Upload a zip file
         // of this folder just in case.
         createZipofDirAndSaveToStorage(info, function(err) {
@@ -291,7 +283,6 @@ function fixDirError(info, errorNum, callback) {
   } else if (errorNum == 503) {
     retryBadUpload(info, callback);
   } else if (errorNum == 404 || errorNum == 'pre-404') {
-    console.log("fixing FILE error 404: " + info.dir.path + '/' + info.dir.name);
     // Currently the only recognized case of a 404 file is if the parent directory has ended up getting rolled into
     // a zip file.
     maybeMarkDirAsZipped(info, function(err, dir) {
@@ -317,7 +308,6 @@ function fixDirError(info, errorNum, callback) {
 
 function fixFileError(info, errorNum, callback) {
   if (errorNum == 409 || errorNum == 'pre-409') {
-    console.log("fixing FILE error 409");
     getFileRemoteIdIfMatchesLocal(info, function(err, remoteId) {
       if (err) {
         callback(err);
@@ -331,7 +321,6 @@ function fixFileError(info, errorNum, callback) {
       ], callback);
     });
   } else if (errorNum == 404 || errorNum == 'pre-404') {
-    console.log("fixing FILE error 404: " + info.file.path + '/' + info.file.name);
     // Currently the only recognized case of a 404 file is if the parent directory has ended up getting rolled into
     // a zip file.
     maybeMarkFileAsZipped(info, function(err, file) {

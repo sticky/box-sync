@@ -61,6 +61,7 @@ function removeFromArray(array, obj) {
 }
 
 function renderVerification(oStream) {
+  return;
   oStream.write('\x1Bc');
   oStream.write('Verifying Uploads\n');
   oStream.write('\n\n');

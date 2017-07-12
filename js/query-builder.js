@@ -9,6 +9,8 @@ var TABLE_DIR_PROGRESS = 'Directory_Progress';
 var TABLE_FILE_PROGRESS = 'Files_Progress';
 var TABLE_DIR_ERROR = 'Directory_Failures';
 var TABLE_FILE_ERROR = 'File_Failures';
+var TABLE_DIR_VERIFY = 'Directory_Verify';
+var TABLE_FILE_VERIFY = 'Files_Verify';
 
 var DIR_INSERT = 'INSERT OR REPLACE INTO ' + TABLE_DIRS + '(Sys_Id_Num, Parent_Id, Remote_Id, Full_Path, Name, Created, Updated) VALUES ($id, $parentId, $remoteId, $path, $name, $created, $updated);';
 var FILE_INSERT = 'INSERT OR REPLACE INTO ' + TABLE_FILES + ' (Folder_Id, Full_Path, Name, Remote_Id, Created, Updated, Hash) VALUES ($folderId, $path, $name, $remote, $created, $updated, $hash);';
@@ -32,6 +34,7 @@ Query.insert = {
     issue: function() { return DIR_ISSUE_INSERT; },
     class: function() { return 'INSERT OR REPLACE INTO ' + TABLE_DIR_CLASS + ' (Dir_Id, Class) VALUES ($id, $class);'; },
     progress: function() { return 'INSERT OR REPLACE INTO ' + TABLE_DIR_PROGRESS + ' (Dir_Id, Done) VALUES ($dir, $done);'; },
+    verify: function() { return 'INSERT OR REPLACE INTO ' +  TABLE_DIR_VERIFY + ' (Dir_Id, VerifyDone) VALUES ($dir, $done);'; },
     error: function() { return 'INSERT OR REPLACE INTO ' + TABLE_DIR_ERROR + '(Dir_Id_Num, Error_Code, Error_Blob) VALUES ($dir, $num, $txt);'; }
   },
   file: {
@@ -39,6 +42,7 @@ Query.insert = {
     issue: function() { return FILE_ISSUE_INSERT; },
     class: function() { return 'INSERT OR REPLACE INTO ' + TABLE_FILE_CLASS + ' (Folder_Id, File_Name, Class) VALUES ($folder, $name, $class);'; },
     progress: function() { return 'INSERT OR REPLACE INTO ' + TABLE_FILE_PROGRESS + ' (Folder_Id, Name, Done) VALUES ($id, $name, $done);'; },
+    verify: function() { return 'INSERT OR REPLACE INTO ' + TABLE_FILE_VERIFY + ' (Folder_Id, Name, VerifyDone) VALUES ($id, $name, $done);'; },
     error: function() { return 'INSERT OR REPLACE INTO ' + TABLE_FILE_ERROR + ' (Folder_Id, Name, Error_Code, Error_Blob) VALUES ($dir, $name, $num, $txt);'; }
   },
   issue: {

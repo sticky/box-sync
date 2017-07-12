@@ -56,7 +56,6 @@ var uploadCounts = {
 };
 
 var updateUiTimer;
-
 // File descriptors
 var fds = {ignoredFiles: null};
 
