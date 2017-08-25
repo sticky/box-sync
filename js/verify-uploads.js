@@ -39,9 +39,9 @@ function verifyFiles(callback) {
 
 function verifyDirUpload(dir, callback) {
   // If this isn't a number, it has probably been manually handled or is otherwise not a normal upload.
-  // Sidenote: Holy crap is it hard to simply do an "is numeric" check in Javascript.
-  if (isNumeric(dir.remoteId)) {
-    storage.recordVerifyComplete('dir', dir, callback);
+  if (!isNumeric(dir.remoteId)) {
+    console.log("skipping due to non-numeric", {name: dir.name, remoteid: dir.remoteId});
+    callback();
     return;
   }
 
@@ -78,7 +78,21 @@ function verifyDirUpload(dir, callback) {
       Ui.finishedDir(dir);
       if (err) {
         Ui.failedDir(dir, err);
-        recordFailureToVerifyDir(dir, {statusCode: 'VERIFY', message: err}, callback);
+        let error = {
+          statusCode: 'VERIFY',
+          message: err
+        };
+
+        // This looks like an API error response.
+        // TODO: This isn't the first time we're looking at API error responses; need a utility or a helper.
+        if (err.statusCode && err.response) {
+          let response = err.response;
+          error.message = 'API response: ' + err.statusCode + ' ' + response.statusMessage;
+        } else if (typeof err !== 'string') {
+          console.log("unsure how to handle:", err);
+        }
+
+        recordFailureToVerifyDir(dir, error, callback);
         return;
       }
       callback();
@@ -88,12 +102,12 @@ function verifyDirUpload(dir, callback) {
 
 function recordFailureToVerifyDir(dir, error, callback) {
   async.series([
-    function(cb) {
-      storage.storeDirError(dir, error, null, cb);
-    },
-    function(cb) {
-      storage.recordVerifyInComplete('dir', dir, cb);
-    }],
+      function(cb) {
+        storage.storeDirError(dir, error, null, cb);
+      },
+      function(cb) {
+        storage.recordVerifyInComplete('dir', dir, cb);
+      }],
     function(err) {
       if (err) {
         throw new Error(err);
@@ -107,7 +121,8 @@ function verifyFileUpload(file, callback) {
   var tasks = [];
   // If this isn't a number, it has probably been manually handled or is otherwise not a normal upload.
   if (!isNumeric(file.remoteId)) {
-    storage.recordVerifyComplete('file', file, callback);
+    console.log("skipping due to non-numeric", {name: file.name, remoteid: file.remoteId});
+    callback();
     return;
   }
 
@@ -143,7 +158,21 @@ function verifyFileUpload(file, callback) {
   async.series(tasks, function(err) {
     Ui.finishedFile(file);
     if (err) {
-      recordFailureToVerifyFile(file, {statusCode: 'VERIFY', message: err}, callback);
+      let error = {
+        statusCode: 'VERIFY',
+        message: err
+      };
+
+      // This looks like an API error response.
+      // TODO: This isn't the first time we're looking at API error responses; need a utility or a helper.
+      if (err.statusCode && err.response) {
+        let response = err.response;
+        error.message = 'API response: ' + err.statusCode + ' ' + response.statusMessage;
+      } else if (typeof err !== 'string') {
+        console.log("unsure how to handle:", err);
+      }
+
+      recordFailureToVerifyFile(file, error, callback);
       Ui.failedFile(file, err);
       return;
     }
@@ -159,13 +188,12 @@ function recordFailureToVerifyFile(file, error, callback) {
     function(cb) {
       storage.recordVerifyInComplete('file', file, cb);
     },
-    function(err) {
-      if (err) {
-        throw new Error(err);
-      }
-      callback();
+  ], function(err) {
+    if (err) {
+      throw new Error(err);
     }
-  ]);
+    callback();
+  });
 }
 
 // Always forget what a pain it is to do a simple "Is this thing numeric?" and also find a solution that
@@ -173,6 +201,5 @@ function recordFailureToVerifyFile(file, error, callback) {
 function isNumeric(n) {
   return !isNaN(parseFloat(n)) && isFinite(n);
 }
-
 
 module.exports = VerifyUploads;
